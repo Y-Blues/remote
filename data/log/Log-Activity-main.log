@@ -1,0 +1,12 @@
+2023-11-23 16:51:44,153;INFO;MainThread;proxy.py;proxy;validate;(48);serverProxy validating
+2023-11-23 16:51:44,153;INFO;MainThread;proxy.py;proxy;validate;(50);serverProxy validated
+2023-11-23 16:55:40,989;INFO;MainThread;proxy.py;proxy;validate;(48);serverProxy validating
+2023-11-23 16:55:40,990;INFO;MainThread;proxy.py;proxy;validate;(50);serverProxy validated
+2023-11-23 16:55:41,009;INFO;MainThread;endpoints.py;endpoints;validate;(235);Endpoint validating
+2023-11-23 16:55:41,015;INFO;MainThread;endpoints.py;endpoints;validate;(244);Endpoint validated
+2023-11-23 16:56:24,551;INFO;MainThread;proxy.py;proxy;validate;(48);serverProxy validating
+2023-11-23 16:56:24,551;INFO;MainThread;proxy.py;proxy;validate;(50);serverProxy validated
+2023-11-23 16:56:46,011;INFO;MainThread;proxy.py;proxy;validate;(48);serverProxy validating
+2023-11-23 16:56:46,012;INFO;MainThread;proxy.py;proxy;validate;(50);serverProxy validated
+2023-11-23 16:56:46,020;INFO;MainThread;endpoints.py;endpoints;validate;(235);Endpoint validating
+2023-11-23 16:56:46,020;INFO;MainThread;endpoints.py;endpoints;validate;(244);Endpoint validated
