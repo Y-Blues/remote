@@ -1,12 +1,13 @@
-#app="all"
-from pelix.ipopo.constants import use_ipopo
+"""
+component that allow to communicate to another server
+"""
 
-from ycappuccino_core.api import IActivityLogger, IConfiguration, YCappuccino, IServerProxy, IService
+from ycappuccino_api.core.api import IActivityLogger, IConfiguration, YCappuccino
 import logging
-from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Property, Provides, Instantiate, BindField, UnbindField
+from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Property, Provides
 import jsonrpclib
 from ycappuccino_core.decorator_app import Layer
-from ycappuccino_service_comm.api import IRemoteClient
+from ycappuccino_api.service_comm.api import IRemoteClient
 
 _logger = logging.getLogger(__name__)
 
@@ -37,21 +38,6 @@ class RemoteClient(IRemoteClient):
 
     def get_name(self):
         return self._name
-
-    def ask_service(self):
-        list_service_descriptions = self.client.ask_service()
-        # create list of proxy service
-        for service_descriptions in list_service_descriptions:
-            with use_ipopo(self._context) as ipopo:
-                # use the iPOPO core service with the "ipopo" variable
-                w_id = service_descriptions["id"]
-                self._log.info("create remote component proxy {}".format(service_descriptions))
-                ipopo.instantiate("RemoteComponentProxy-Factory", "RemoteComponentProxy-Factory-{}".format(w_id),
-                                  {
-                                      "client_name": self._name,
-                                  })
-
-                self._log.info("end remote component proxy {}".format(service_descriptions))
 
 
 

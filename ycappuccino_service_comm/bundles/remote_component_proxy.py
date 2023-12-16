@@ -1,45 +1,37 @@
-#app="all"
+"""
+component that represent a remote Component Proxy that is link to n server instance
+TODO implementation Laod balancing
+"""
 
-from ycappuccino_core.api import IActivityLogger, IConfiguration, YCappuccino, IServerProxy, IService
+from ycappuccino_api.core.api import IActivityLogger, IConfiguration
 import logging
-from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Property, Provides, Instantiate, BindField, UnbindField
-import jsonrpclib
+from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Property, Provides
 from ycappuccino_core.decorator_app import Layer
-from ycappuccino_service_comm.api import IRemoteClient, IRemoteComponentProxy
+from ycappuccino_api.service_comm.api import IRemoteComponentProxy
 
 _logger = logging.getLogger(__name__)
 
 @ComponentFactory('RemoteComponentProxy-Factory')
 @Provides(specifications=[IRemoteComponentProxy.name])
 @Requires("_log", IActivityLogger.name, spec_filter="'(name=main)'")
-@Requires("_list_remote_client", IRemoteClient.name, optional=True, aggregate=True)
 @Requires("_config", IConfiguration.name)
 @Property('_client_name',"client_name","")
 @Layer(name="ycappuccino_service_comm")
 class RemoteComponentProxy(IRemoteComponentProxy):
-
+    """ component that allow to call a remote client. implemtation of proxy component that call remote client"""
     def __init__(self):
         super().__init__()
         self._log = None
-        self._client = None
         self._client_name = None
         self._list_remote_client = None
 
     def execute(self, a_params):
-        """ return tuple of 2 element that admit a dictionnary of header and a body"""
-        self._client.call(a_params)
+        """ return tuple of 2 element that admit a dictionnary of header and a body
+        TODO """
+        self._list_remote_client[0].call(a_params)
 
-    @BindField("_list_remote_client")
-    def bind_remote_client(self, field, a_remote_client, a_service_reference):
-        w_id = a_remote_client.get_name()
-        if w_id == self._client_name:
-            self._client = a_remote_client
-
-    @UnbindField("_list_remote_client")
-    def unbind_remote_client(self, field, a_remote_client, a_service_reference):
-        w_id = a_remote_client.get_name()
-        if w_id == self._client_name:
-            self._client = None
+    def add_client(self, a_client):
+        self._list_remote_client.append(a_client)
 
     @Validate
     def validate(self, context):

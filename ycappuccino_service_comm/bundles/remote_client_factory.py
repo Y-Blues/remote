@@ -1,12 +1,15 @@
-#app="all"
+
+"""
+component that create remote client component or remove remote client. it allow list all of them
+"""
+
 from pelix.ipopo.constants import use_ipopo
-from ycappuccino_core.api import IActivityLogger, IConfiguration, YCappuccino, IServerProxy, IService
+from ycappuccino_api.core.api import IActivityLogger, IConfiguration, YCappuccino, IService
 import logging
-from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Property, Provides, Instantiate, BindField, UnbindField
-import jsonrpclib
+from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Provides, Instantiate, BindField, UnbindField
 from ycappuccino_core.decorator_app import Layer
 
-from ycappuccino_service_comm.api import IRemoteClientFactory, IRemoteClient
+from ycappuccino_api.service_comm.api import IRemoteClientFactory, IRemoteClient
 
 _logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class RemoteClientFactory(IRemoteClientFactory, IService):
             w_id = self.get_remote_server_id(a_remote_server)
             # use the iPOPO core service with the "ipopo" variable
             self._log.info("create remote client  {}".format(a_remote_server))
-            ipopo.instantiate("Manager-Proxy-Factory", "Manager-Proxy-{}".format(w_id),
+            ipopo.instantiate("RemoteClient-Factory", "RemoteClient-Factory-{}".format(w_id),
                               {
                                 "remote_server_id": w_id,
                                 "name": w_id,
@@ -88,13 +91,13 @@ class RemoteClientFactory(IRemoteClientFactory, IService):
 
     @Validate
     def validate(self, context):
-        self._log.info("RemoteClient validating")
+        self._log.info("RemoteClientFactory validating")
 
 
-        self._log.info("RemoteClient validated")
+        self._log.info("RemoteClientFactory validated")
 
     @Invalidate
     def invalidate(self, context):
-        self._log.info("RemoteClient invalidating")
+        self._log.info("RemoteClientFactory invalidating")
 
-        self._log.info("RemoteClient invalidated")
+        self._log.info("RemoteClientFactory invalidated")
