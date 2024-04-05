@@ -1,0 +1,11 @@
+---
+models.app:
+  ycappuccino_service_comm: true
+layers:
+  ycappuccino_service_comm:
+    active: true
+    host: localhost
+    port: 0
+    scheme: http
+name: service_comm
+bundle_prefix: ycappuccino

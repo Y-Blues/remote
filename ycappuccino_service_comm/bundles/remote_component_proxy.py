@@ -2,44 +2,49 @@
 component that represent a remote Component Proxy that is link to n server instance
 TODO implementation Laod balancing
 """
+import json
+import logging,  inspect
+from functools import partial
+from types import MethodType
 
-from ycappuccino_api.core.api import IActivityLogger, IConfiguration
-import logging
-from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Property, Provides
-from ycappuccino_core.decorator_app import Layer
 from ycappuccino_api.service_comm.api import IRemoteComponentProxy
 
 _logger = logging.getLogger(__name__)
 
-@ComponentFactory('RemoteComponentProxy-Factory')
-@Provides(specifications=[IRemoteComponentProxy.name])
-@Requires("_log", IActivityLogger.name, spec_filter="'(name=main)'")
-@Requires("_config", IConfiguration.name)
-@Property('_client_name',"client_name","")
-@Layer(name="ycappuccino_service_comm")
+
 class RemoteComponentProxy(IRemoteComponentProxy):
     """ component that allow to call a remote client. implemtation of proxy component that call remote client"""
-    def __init__(self):
+
+    def __init__(self, a_log, a_remote_client, a_specifications, a_properties, a_methods):
         super().__init__()
-        self._log = None
-        self._client_name = None
-        self._list_remote_client = None
+        self._log = a_log
+        self._remote_client = a_remote_client
+        self._methods = a_methods
+        self._specifications = a_specifications
+        self._properties = a_properties
+        self._properties_id = json.dumps(a_properties)
+        for method in self._methods:
+            if not hasattr(self, method) and method is not None and not method.startswith("_"):
+                setattr(self, method, partial(call, service=self, name=method))
 
-    def execute(self, a_params):
-        """ return tuple of 2 element that admit a dictionnary of header and a body
-        TODO """
-        self._list_remote_client[0].call(a_params)
+    def get_specifications(self):
+        return  self._specifications
 
-    def add_client(self, a_client):
-        self._list_remote_client.append(a_client)
+    def get_properties_id(self):
+        return self._properties_id
 
-    @Validate
-    def validate(self, context):
-        self._log.info("RemoteComponentProxy validating")
-        self._log.info("RemoteComponentProxy validated")
 
-    @Invalidate
-    def invalidate(self, context):
-        self._log.info("RemoteComponentProxy invalidating")
+def call(*args, **kwds):
+    """
+    This method gets called before a method is called.
+    """
+    service = kwds["service"]
+    name = kwds["name"]
+    w_kwds = kwds.copy()
+    del w_kwds["service"]
 
-        self._log.info("RemoteComponentProxy invalidated")
+    w_kwds["specifications"]= service.get_specifications()
+    w_kwds["properties_id"]= service.get_properties_id()
+
+    rval = service._remote_client.method_call(*args, **w_kwds)
+    return rval
