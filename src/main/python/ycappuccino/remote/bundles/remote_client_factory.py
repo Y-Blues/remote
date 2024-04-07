@@ -19,7 +19,7 @@ from pelix.ipopo.decorators import (
 from src.main.python.decorator_app import Layer
 
 from ycappuccino_api.service_comm.api import IRemoteClientFactory, IRemoteClient
-from src.main.python.bundles.remote_client import connect
+from ycappuccino.remote.bundles.remote_client import connect
 
 _logger = logging.getLogger(__name__)
 
