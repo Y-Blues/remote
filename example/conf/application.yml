@@ -7,5 +7,5 @@ layers:
     host: localhost
     port: 0
     scheme: http
-name: service_comm
+name: remote
 bundle_prefix: ycappuccino

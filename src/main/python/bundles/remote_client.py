@@ -4,22 +4,33 @@ component that allow to communicate to another server
 
 from ycappuccino_api.core.api import IActivityLogger, IConfiguration
 import logging
-from pelix.ipopo.decorators import ComponentFactory, Requires, Validate, Invalidate, Property, Provides
+from pelix.ipopo.decorators import (
+    ComponentFactory,
+    Requires,
+    Validate,
+    Invalidate,
+    Property,
+    Provides,
+)
 import jsonrpclib
 
-from ycappuccino_api.proxy.api import YCappuccinoRemote
-from ycappuccino_core import executor_service
-from ycappuccino_core.decorator_app import Layer
-from ycappuccino_api.service_comm.api import IRemoteClient, IRemoteServer, IRemoteClientFactory
-from ycappuccino_core.executor_service import Callable
+from src.main.python import executor_service
+from src.main.python.decorator_app import Layer
+from ycappuccino_api.service_comm.api import (
+    IRemoteClient,
+    IRemoteServer,
+    IRemoteClientFactory,
+)
+from ycappuccino_core import Callable
 
 _logger = logging.getLogger(__name__)
 
+
 def connect(a_scheme, a_host, a_port):
     try:
-        client = jsonrpclib.ServerProxy('{}://{}:{}'.format(a_scheme, a_host, a_port))
+        client = jsonrpclib.ServerProxy("{}://{}:{}".format(a_scheme, a_host, a_port))
         client.test()
-        return client;
+        return client
     except:
         return None
 
@@ -34,15 +45,16 @@ class ValidateAskService(Callable):
     def run(self):
         self._service.validate_ask_service()
 
-@ComponentFactory('RemoteClient-Factory')
+
+@ComponentFactory("RemoteClient-Factory")
 @Provides(specifications=[IRemoteClient.__name__])
 @Requires("_log", IActivityLogger.__name__, spec_filter="'(name=main)'")
 @Requires("_config", IConfiguration.__name__)
-@Property('_host', "host","localhost")
-@Property('_port',"port",8888)
-@Property('_scheme',"scheme","http")
-@Property('_name',"name","")
-@Property('_remote_client_id',"remote_client_id","")
+@Property("_host", "host", "localhost")
+@Property("_port", "port", 8888)
+@Property("_scheme", "scheme", "http")
+@Property("_name", "name", "")
+@Property("_remote_client_id", "remote_client_id", "")
 @Requires("_remote_server", IRemoteServer.__name__)
 @Requires("_remote_client_factory", IRemoteClientFactory.__name__)
 @Layer(name="ycappuccino_service_comm")
@@ -63,16 +75,16 @@ class RemoteClient(IRemoteClient):
         self._remote_server = None
 
     def method_call(self, *args, **kwds):
-        """ return tuple of 2 element that admit a dictionnary of header and a body"""
+        """return tuple of 2 element that admit a dictionnary of header and a body"""
         if self.test_service():
             w_kwds = kwds.copy()
             i = 0
             for arg in args:
                 w_kwds["arg_{}".format(i)] = arg
-                i = i+1
+                i = i + 1
             try:
                 return self._client.method_call(**w_kwds)
-            except :
+            except:
                 self.connect()
                 return self._client.method_call(**w_kwds)
 
@@ -89,11 +101,13 @@ class RemoteClient(IRemoteClient):
 
     def test_service(self):
         try:
-            #self._client.test()
+            # self._client.test()
             self._active = True
-        except :
+        except:
             self._active = False
-            self._remote_client_factory.remove_remote_client(self.get_remote_client_id())
+            self._remote_client_factory.remove_remote_client(
+                self.get_remote_client_id()
+            )
         return self._active
 
     def ask_services(self):
@@ -104,7 +118,6 @@ class RemoteClient(IRemoteClient):
     def update_services(self, remove_service):
         if self.test_service():
             self._client.update_services(remove_service)
-
 
     def validate_ask_service(self):
         self._client = connect(self._scheme, self._host, self._port)
