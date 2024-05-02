@@ -18,7 +18,7 @@ from ycappuccino.core import executor_service
 from uuid import uuid4
 import json
 from ycappuccino.core.decorator_app import Layer
-from ycappuccino.api.service_comm.api import IRemoteStorage
+from ycappuccino.api.remote.api import IRemoteStorage
 from ycappuccino.storage.models.model import Model
 
 _logger = logging.getLogger(__name__)

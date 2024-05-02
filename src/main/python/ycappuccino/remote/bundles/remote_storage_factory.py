@@ -14,7 +14,7 @@ from pelix.ipopo.decorators import (
 
 import ycappuccino.core
 from ycappuccino.core.decorator_app import Layer
-from ycappuccino.api.service_comm.api import IRemoteStorageFactory
+from ycappuccino.api.remote.api import IRemoteStorageFactory
 
 _logger = logging.getLogger(__name__)
 

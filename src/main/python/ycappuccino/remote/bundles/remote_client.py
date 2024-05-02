@@ -16,7 +16,7 @@ import jsonrpclib
 
 from ycappuccino.core import executor_service
 from ycappuccino.core.decorator_app import Layer
-from ycappuccino.api.service_comm.api import (
+from ycappuccino.api.remote.api import (
     IRemoteClient,
     IRemoteServer,
     IRemoteClientFactory,

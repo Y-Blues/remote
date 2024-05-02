@@ -24,14 +24,14 @@ from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCServer
 from ycappuccino.core.executor_service import Callable
 from jsonrpclib.threadpool import ThreadPool
 from ycappuccino.core.decorator_app import Layer
-from ycappuccino.api.service_comm.api import (
+from ycappuccino.api.remote.api import (
     IRemoteClientFactory,
     IRemoteServer,
     IRemoteClient,
 )
 from ycappuccino.core.models import decorators
 from ycappuccino.remote.bundles.remote_component_proxy import RemoteComponentProxy
-from ycappuccino.api.service_comm.api import IRemoteManager
+from ycappuccino.api.remote.api import IRemoteManager
 from ycappuccino.remote.models.remote_server import RemoteServer
 from ycappuccino.api.storage.api import IItemManager
 

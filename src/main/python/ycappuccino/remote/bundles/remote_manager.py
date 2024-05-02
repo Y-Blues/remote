@@ -1,4 +1,4 @@
-from ycappuccino.api.service_comm.api import IRemoteStorage, IRemoteManager
+from ycappuccino.api.remote.api import IRemoteStorage, IRemoteManager
 from ycappuccino.remote.bundle.remote_server import RemoteServer
 from ycappuccino.storage.bundles.managers import AbsManager
 from ycappuccino.api.core.api import IActivityLogger
