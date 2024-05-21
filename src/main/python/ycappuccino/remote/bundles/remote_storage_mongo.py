@@ -1,6 +1,6 @@
 # app="all"
 import ycappuccino.storage
-from ycappuccino.api.core.api import IActivityLogger, IConfiguration
+from ycappuccino.api.core import IActivityLogger, IConfiguration
 import logging
 from pelix.ipopo.decorators import (
     ComponentFactory,
@@ -18,8 +18,7 @@ from ycappuccino.core import executor_service
 from uuid import uuid4
 import json
 from ycappuccino.core.decorator_app import Layer
-from ycappuccino.api.remote.api import IRemoteStorage
-from ycappuccino.storage.models.model import Model
+from ycappuccino.api.remote import IRemoteStorage
 
 _logger = logging.getLogger(__name__)
 

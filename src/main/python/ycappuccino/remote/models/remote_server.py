@@ -1,5 +1,5 @@
-from ycappuccino.core.models.decorators import Property
-from ycappuccino.storage.models.model import Model
+from ycappuccino.api.decorators import Property
+from ycappuccino.api.models import Model
 
 """
 represent a server on which we can connect

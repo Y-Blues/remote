@@ -3,7 +3,7 @@ component that create remote client component or remove remote client. it allow 
 """
 
 from pelix.ipopo.constants import use_ipopo
-from ycappuccino.api.core.api import IActivityLogger, IConfiguration, IService
+from ycappuccino.api.core import IActivityLogger, IConfiguration, IService
 import logging
 from pelix.ipopo.decorators import (
     ComponentFactory,
@@ -18,7 +18,7 @@ from pelix.ipopo.decorators import (
 
 from ycappuccino.core.decorator_app import Layer
 
-from ycappuccino.api.remote.api import IRemoteClientFactory, IRemoteClient
+from ycappuccino.api.remote import IRemoteClientFactory, IRemoteClient
 from ycappuccino.remote.bundles.remote_client import connect
 
 _logger = logging.getLogger(__name__)

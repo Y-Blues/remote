@@ -5,10 +5,10 @@ component that is a server remote that allow to call any ycapppuccino component
 import json
 import time
 
-from ycappuccino.api.proxy.api import YCappuccinoRemote
+from ycappuccino.api.proxy import YCappuccinoRemote
 from ycappuccino.core.framework import Framework
 from ycappuccino.core import executor_service
-from ycappuccino.api.core.api import IActivityLogger, IConfiguration
+from ycappuccino.api.core import IActivityLogger, IConfiguration
 import logging
 from pelix.ipopo.decorators import (
     ComponentFactory,
@@ -24,16 +24,16 @@ from jsonrpclib.SimpleJSONRPCServer import SimpleJSONRPCServer
 from ycappuccino.core.executor_service import Callable
 from jsonrpclib.threadpool import ThreadPool
 from ycappuccino.core.decorator_app import Layer
-from ycappuccino.api.remote.api import (
+from ycappuccino.api.remote import (
     IRemoteClientFactory,
     IRemoteServer,
     IRemoteClient,
 )
 from ycappuccino.core.models import decorators
 from ycappuccino.remote.bundles.remote_component_proxy import RemoteComponentProxy
-from ycappuccino.api.remote.api import IRemoteManager
+from ycappuccino.api.remote import IRemoteManager
 from ycappuccino.remote.models.remote_server import RemoteServer
-from ycappuccino.api.storage.api import IItemManager
+from ycappuccino.api.storage import IItemManager
 
 _logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@
 component that allow to communicate to another server
 """
 
-from ycappuccino.api.core.api import IActivityLogger, IConfiguration
+from ycappuccino.api.core import IActivityLogger, IConfiguration
 import logging
 from pelix.ipopo.decorators import (
     ComponentFactory,
@@ -16,7 +16,7 @@ import jsonrpclib
 
 from ycappuccino.core import executor_service
 from ycappuccino.core.decorator_app import Layer
-from ycappuccino.api.remote.api import (
+from ycappuccino.api.remote import (
     IRemoteClient,
     IRemoteServer,
     IRemoteClientFactory,

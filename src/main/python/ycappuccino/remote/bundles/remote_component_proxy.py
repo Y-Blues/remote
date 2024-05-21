@@ -7,7 +7,7 @@ import json
 import logging
 from functools import partial
 
-from ycappuccino.api.remote.api import IRemoteComponentProxy
+from ycappuccino.api.remote import IRemoteComponentProxy
 
 _logger = logging.getLogger(__name__)
 
