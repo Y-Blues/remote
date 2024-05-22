@@ -57,7 +57,7 @@ class ValidateAskService(Callable):
 @Property("_remote_client_id", "remote_client_id", "")
 @Requires("_remote_server", IRemoteServer.__name__)
 @Requires("_remote_client_factory", IRemoteClientFactory.__name__)
-@Layer(name="ycappuccino_service_comm")
+@Layer(name="ycappuccino-remote")
 class RemoteClient(IRemoteClient):
 
     def __init__(self):

@@ -38,7 +38,7 @@ class ValidateStorageConnect(Callable):
 @Provides(specifications=[IRemoteStorage.__name__], controller="_available")
 @Requires("_log", IActivityLogger.__name__, spec_filter="'(name=main)'")
 @Requires("_config", IConfiguration.__name__)
-@Layer(name="ycappuccino_service_comm_storage")
+@Layer(name="ycappuccino_remote_storage")
 class MongoRemoteStorage(IRemoteStorage):
 
     def __init__(self):
@@ -56,9 +56,7 @@ class MongoRemoteStorage(IRemoteStorage):
         self.framework = ycappuccino.core.framework.Framework.get_framework()
 
     def load_configuration(self):
-        prop_layer = self.framework.get_layer_properties(
-            "ycappuccino_service_comm_storage"
-        )
+        prop_layer = self.framework.get_layer_properties("ycappuccino-remote_storage")
         self._host = prop_layer["host"]
         self._port = prop_layer["port"]
         self._username = (

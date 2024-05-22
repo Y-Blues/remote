@@ -19,7 +19,7 @@ from ycappuccino.core.decorator_app import Layer
 @Requires("_log", IActivityLogger.__name__, spec_filter="'(name=main)'")
 @Requires("_storage", IRemoteStorage.__name__)
 @Instantiate("RemoteManager")
-@Layer(name="ycappuccino_service_comm_storage")
+@Layer(name="ycappuccino-remote_storage")
 class RemoteManager(AbsManager):
 
     def __init__(self):

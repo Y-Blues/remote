@@ -137,7 +137,7 @@ class ThreadRemoteServer(Callable):
 @Requires("_manager_remote_server", IRemoteManager.__name__)
 @Requires("_item_manager", IItemManager.__name__, optional=True, aggregate=True)
 @Instantiate("RemoteServerService")
-@Layer(name="ycappuccino_service_comm_storage")
+@Layer(name="ycappuccino-remote_storage")
 class RemoteServerService(IRemoteServer):
 
     def __init__(self):
@@ -160,7 +160,7 @@ class RemoteServerService(IRemoteServer):
         self._threadExecutorRead = None
         self._manager_remote_server = None
         self._remote_client_factory = None
-        prop_layer = self.framework.get_layer_properties("ycappuccino_service_comm")
+        prop_layer = self.framework.get_layer_properties("ycappuccino-remote")
         self._host = prop_layer["host"] if "host" in prop_layer else "localhost"
         self._scheme = prop_layer["scheme"] if "scheme" in prop_layer else "http"
         self._port = prop_layer["port"] if "port" in prop_layer else 8080

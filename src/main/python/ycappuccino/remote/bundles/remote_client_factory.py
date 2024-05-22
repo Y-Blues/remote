@@ -30,7 +30,7 @@ _logger = logging.getLogger(__name__)
 @Requires("_config", IConfiguration.__name__)
 @Requires("_list_remote_client", IRemoteClient.__name__, aggregate=True, optional=True)
 @Instantiate("RemoteClientFactory")
-@Layer(name="ycappuccino_service_comm")
+@Layer(name="ycappuccino-remote")
 class RemoteClientFactory(IRemoteClientFactory, IService):
 
     def __init__(self):

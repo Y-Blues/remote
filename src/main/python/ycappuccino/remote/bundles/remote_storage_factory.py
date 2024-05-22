@@ -24,7 +24,7 @@ _logger = logging.getLogger(__name__)
 @Requires("_log", IActivityLogger.__name__, spec_filter="'(name=main)'")
 @Requires("_config", IConfiguration.__name__)
 @Instantiate("RemoteStorageFactory")
-@Layer(name="ycappuccino_service_comm_storage")
+@Layer(name="ycappuccino-remote_storage")
 class RemoteStorageFactory(IRemoteStorageFactory):
 
     def __init__(self):
@@ -36,7 +36,7 @@ class RemoteStorageFactory(IRemoteStorageFactory):
         self._log.info("RemoteStorageFactory validating")
         prop_layer = (
             ycappuccino_core.framework.Framework.get_framework().get_layer_properties(
-                "ycappuccino_service_comm_storage"
+                "ycappuccino-remote_storage"
             )
         )
         if "type" in prop_layer.keys():
