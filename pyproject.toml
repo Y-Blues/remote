@@ -1,3 +1,31 @@
+[project]
+name = "ycappuccino-remote"
+version = "0.1.0"
+description = "YCappuccino remote: calling a named IExposedService on another instance over HTTP"
+requires-python = ">=3.10"
+dependencies = [
+    "ycappuccino-api",
+    "ycappuccino-core",
+    "ycappuccino-storage",
+]
+
+[dependency-groups]
+dev = [
+    "ycappuccino-http-server",
+    "ycappuccino-endpoints-service",
+]
+
 [build-system]
-requires = ["pybuilder>=0.12.0"]
-build-backend = "pybuilder.pep517"
+requires = ["uv_build>=0.12.13,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "ycappuccino.remote"
+module-root = "src/main/python"
+
+[tool.uv.sources]
+ycappuccino-api = { path = "../api", editable = true }
+ycappuccino-core = { path = "../core", editable = true }
+ycappuccino-storage = { path = "../storage", editable = true }
+ycappuccino-http-server = { path = "../http_server", editable = true }
+ycappuccino-endpoints-service = { path = "../endpoints_service", editable = true }
