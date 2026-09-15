@@ -1,13 +1,16 @@
 ---
-name: remote-caller-demo
+name: remote-peer-demo
 bundle_prefix:
   - ycappuccino.storage
+  - ycappuccino.endpoints_storage
   - ycappuccino.endpoints_service
-  - ycappuccino.remote
+  - ycappuccino.http_server
   - demo
 layers:
   ycappuccino_storage_memory:
     active: true
 config:
   http_server:
-    active: false
+    active: true
+    port: 18160
+    ip: localhost
