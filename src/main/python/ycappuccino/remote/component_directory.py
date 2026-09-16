@@ -76,6 +76,10 @@ from ycappuccino.remote.remote_proxy import make_generic_proxy
 
 _logger = logging.getLogger(__name__)
 
+# pelix.http.HTTP_SERVLET's literal value -- not imported from pelix.http to avoid adding a direct
+# pelix dependency to remote for a single string constant; see _spawn_proxy for why it is skipped.
+_PELIX_HTTP_SERVLET_MARKER = "pelix.http.servlet"
+
 
 def _default_instantiate(component, properties):
     return Framework.get_framework().instantiate_component(component, properties)
@@ -178,6 +182,14 @@ class ComponentDirectory(ITrigger):
             self._spawn_proxy(qualified_path, peer_id, document)
 
     def _spawn_proxy(self, qualified_path, peer_id, document):
+        if qualified_path == _PELIX_HTTP_SERVLET_MARKER:
+            # core's own documented, permanent exception (see component_factory.py's
+            # ComponentDescription.provides_qualified docstring): this is a Pelix marker string,
+            # not a real Python class, appended to a servlet's provides/provides_qualified at the
+            # SAME index -- it is guaranteed never resolvable, skip without even trying, rather
+            # than logging a warning on every single discovery of every peer that has
+            # http_server active (i.e. virtually every peer in practice).
+            return
         try:
             interface = resolve_class(qualified_path)
         except Exception:

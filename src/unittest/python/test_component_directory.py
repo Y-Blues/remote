@@ -199,6 +199,25 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         component, _ = instantiate.calls[0]
         self.assertTrue(issubclass(component, IInventoryService))
 
+    async def test_the_pelix_http_servlet_marker_is_skipped_without_even_a_warning(self):
+        # a peer with http_server active always reports "pelix.http.servlet" for its ApiServlet
+        # (see component_factory.py's ComponentDescription.provides_qualified docstring: it is a
+        # documented, permanent, non-resolvable marker, not a real class) -- this would otherwise
+        # log a warning on every single discovery of virtually every peer in practice.
+        manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
+        opener = FakeComponentsOpener(
+            {"a.example:9000": [_component("pelix.http", "ApiServletFactory", ["pelix.http.servlet"])]}
+        )
+        instantiate = RecordingInstantiate()
+        directory = ComponentDirectory(
+            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+        )
+
+        with self.assertNoLogs("ycappuccino.remote.component_directory", "WARNING"):
+            await directory._discover_all()
+
+        self.assertEqual(instantiate.calls, [])
+
     async def test_unresolvable_qualified_path_is_skipped_without_crashing(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
         opener = FakeComponentsOpener(
