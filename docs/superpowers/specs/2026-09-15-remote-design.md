@@ -242,6 +242,139 @@ remote/
   `@Item` normal, persisté par le backend de `storage` déjà en place (mémoire ou Mongo), sans code
   spécifique.
 
+## Addendum (2026-09-16) : découverte dynamique et `FederatedServiceEndpoint`
+
+**Demande** : l'appelant ne doit plus jamais nommer un pair au site d'appel. Un composant qui dépend
+d'`IServiceEndpoint` et appelle `endpoint.call("service_b", ...)` doit atteindre `service_b`, qu'il
+soit local ou exposé par un autre conteneur, sans savoir lequel — « comme si c'était dans le même
+processus ». Deux options ont été soumises à l'utilisateur pour savoir comment un conteneur
+apprendrait quel pair héberge quel service : (A) déclaration explicite sur `RemoteServer`, ou
+(B) découverte dynamique en interrogeant les pairs. **L'utilisateur a choisi (B)** : `RemoteServer`
+reste minimal (`host`/`port`/`scheme`), aucune liste de services n'y est ajoutée.
+
+Ceci est une **addition** : `RemoteServer`, `RemoteCall` et l'adressage `remote_call/<peer_id>/<service>`
+existants ne changent pas et restent utilisables tels quels par un appelant qui connaît déjà le pair
+exact qu'il veut viser.
+
+### A. `RemoteCapabilities` (`capabilities.py`)
+
+Un `IExposedService` de plus, publié sous le nom réservé **`__remote_capabilities__`**, `secure = False`.
+Il prend la même dépendance vivante `services: list[IExposedService]` que
+`endpoints_service.ServiceEndpoint`/`FederatedServiceEndpoint`, et répond
+`{"services": [s.name for s in self._services if s.name]}` — uniquement des noms, jamais de données.
+
+Toute instance qui charge `ycappuccino.remote` dans son `bundle_prefix` expose donc automatiquement
+ce qu'elle publie localement, sans code applicatif.
+
+**Compromis de sécurité assumé, pas un oubli** : `secure=False` est nécessaire parce que
+`RemoteCall`/`FederatedServiceEndpoint` ne transmettent jamais de sujet au pair (section 3
+ci-dessus) — un `__remote_capabilities__` sécurisé ne pourrait jamais être interrogé par un autre
+pair, la découverte serait impossible. Conséquence honnête : **tout appelant capable d'atteindre le
+port HTTP de cette instance peut lister les noms de tous les `IExposedService` qu'elle publie
+localement** (pas les appeler, pas voir de données — juste les noms). C'est une divulgation
+d'information mineure, cohérente avec le périmètre déjà assumé de `remote` (« cluster interne de
+confiance, pas de transmission d'authentification »). Ne jamais mettre d'information sensible dans
+le *nom* d'un service.
+
+### B. `ServiceDirectory` (`discovery.py`) : cache de découverte
+
+Composant natif (`YCappuccinoComponent`), dépend d'`IManager` (registre `RemoteServer`, lecture
+`subject=None`, même convention que `RemoteCall`) et, comme `RemoteCall`, d'un `opener` HTTP
+injectable et d'un `timeout`.
+
+- **`start()`** : interroge, au mieux, `__remote_capabilities__` de **chaque** `RemoteServer`
+  actuellement enregistré (via le helper HTTP partagé, section « Helper HTTP partagé » ci-dessous) et
+  peuple un cache `{nom_de_service: peer_id}`. Un pair injoignable est **loggé en warning et ignoré** —
+  ne fait jamais échouer le démarrage.
+- **`locate(service_name) -> Optional[str]`** : lit le cache d'abord (aucun appel HTTP en cas de
+  succès). En cas d'échec (nom absent du cache), **réinterroge en direct tous les pairs actuellement
+  enregistrés** (pas seulement ceux qui avaient échoué), puis relit le cache. Retourne `None` si le
+  service n'est trouvé nulle part.
+- Si deux pairs annoncent le même nom de service, le **premier découvert l'emporte** (ordre de
+  `get_many()`, non garanti configurable) — un cas limite que l'opérateur doit éviter en n'exposant
+  pas le même nom sur deux pairs interrogés par la même instance.
+
+**Compromis de péremption (staleness), assumé et documenté, pas un bug** : le cache ne reflète que ce
+que la découverte a vu. Entre deux découvertes, un pair qui commence à exposer un nouveau service,
+arrête d'en exposer un, ou change d'hôte/port, est invisible pour une entrée déjà en cache — un
+service déjà mis en cache vers le pair A y reste même si A ne le sert plus, jusqu'à ce que l'appel
+distant réel échoue (pas détecté par `ServiceDirectory` lui-même). Il n'y a ni invalidation push, ni
+heartbeat, ni TTL. Ceci prolonge, sans le contredire, le choix déjà assumé pour `RemoteServer`
+lui-même (« Hors périmètre » : pas de heartbeat/failover) : la découverte ici est **best-effort et
+non autoritaire**, jamais une source de vérité temps réel.
+
+### C. `FederatedServiceEndpoint` (`federated_endpoint.py`) : précédence locale puis distante
+
+Un `IServiceEndpoint` complet et indépendant (ne dépend pas de `ServiceEndpoint`, voir « Pourquoi »
+ci-dessous). Dépendances : `services: list[IExposedService]`, `authorizations: list[IAuthorization]`
+(dupliqué depuis `endpoints_service.endpoint.ServiceEndpoint`, comportement identique — sujet requis
+si `secure`, `Forbidden` si aucune `IAuthorization` publiée, sinon délégation à
+`authorizations[0].is_authorized(subject, CALL, name)`), plus `directory: ServiceDirectory` et
+`manager: IManager` (pour résoudre `host`/`port`/`scheme` du pair une fois son `peer_id` connu, comme
+`RemoteCall`).
+
+`call(name, method, extra_path, params, body, subject)` :
+
+1. Recherche `name` dans `services` (linéaire, dupliquée depuis `ServiceEndpoint._find`, voir
+   « Pourquoi » — pas de dépendance à `ServiceEndpoint` lui-même).
+2. **Trouvé localement** : vérifie son autorisation exactement comme `ServiceEndpoint`, puis l'appelle
+   localement. **Aucune consultation de `ServiceDirectory` dans ce cas** — le local a toujours
+   priorité, jamais de détour réseau pour un nom que l'instance sait déjà servir elle-même.
+3. **Pas trouvé localement** : `directory.locate(name)`. `None` → `NotFound(name)`, exactement le
+   comportement qu'un `ServiceEndpoint` purement local aurait pour un nom inconnu.
+4. **Pair trouvé** : résout son document via `manager.get_one("remoteServer", peer_id, subject=None)`
+   (`NotFound` si le pair a disparu du registre entre la découverte et l'appel) puis relaie l'appel
+   **directement** vers `/api/services/<name>[...]` de ce pair, via le même helper HTTP que
+   `RemoteCall` — **pas** via l'adressage `remote_call/<peer_id>/<service>` : le pair est déjà connu,
+   `remote_call` n'apporterait rien ici. Aucun sujet n'est transmis (section 3) : le service ciblé sur
+   le pair doit être `secure=False`, sinon l'appel distant se traduit en `NotAuthenticated`/`Forbidden`
+   local, sans planter.
+
+**Le site d'appel est donc indistinguable d'un appel local** : `endpoint.call("service_b", "POST",
+[], {}, body, None)` ne contient ni identifiant de pair, ni marqueur « ceci est distant ».
+
+#### Pourquoi dupliquer la logique locale plutôt que de dépendre de `ServiceEndpoint`
+
+iPOPO/Pelix a une règle de départage déterministe pour plusieurs fournisseurs d'une même
+spécification : `service.ranking` le plus haut gagne, égalité départagée par le plus petit
+`service_id` (donc premier enregistré) — voir `pelix.internals.registry.ServiceReference.__compute_key`.
+Ni `ServiceEndpoint` ni `FederatedServiceEndpoint` ne fixent de `service.ranking` explicite, donc à
+égalité (0 partout), l'ordre suit l'ordre de scan de `bundle_prefix` (voir `core/README.md`).
+
+Mais **c'est pire qu'une simple histoire de priorité** : `http_server.ApiServlet._route_services`
+(http_server/src/main/python/ycappuccino/http_server/servlet.py) ne consulte **jamais que
+`services[0]`** de sa liste vivante `list[IServiceEndpoint]`, pour **chaque** requête
+`/api/services/*` — il n'y a aucun routage par service, aucun essai du suivant si le premier échoue.
+Charger `ycappuccino.endpoints_service` **et** `ycappuccino.remote` ensemble rend donc l'un des deux
+fournisseurs d'`IServiceEndpoint` **totalement mort pour tout appel HTTP**, silencieusement, au gré
+d'un ordre de scan incident (pas une priorité documentée et stable sur laquelle concevoir quoi que ce
+soit) : si `ServiceEndpoint` gagne, la découverte dynamique de `FederatedServiceEndpoint` ne se
+déclenche jamais pour aucun appel HTTP ; si `FederatedServiceEndpoint` gagne, ça fonctionne, mais par
+accident d'ordre de chargement, pas par conception. C'est cette raison précise — et non une simple
+absence de mécanisme de priorité — qui interdit à `FederatedServiceEndpoint` de dépendre de
+`ServiceEndpoint` et de lui déléguer son cas local : il doit être une implémentation complète et
+indépendante, substituée à `ServiceEndpoint`, jamais ajoutée à côté.
+
+**Règle opérationnelle (documentée aussi dans le README)** : charger `ycappuccino.remote` **à la
+place** d'`ycappuccino.endpoints_service` pour le rôle `IServiceEndpoint` d'une instance qui veut des
+appels fédérés. Ne jamais charger les deux ensemble pour ce rôle.
+
+### D. Helper HTTP partagé (`_http.py`)
+
+`RemoteCall`, `ServiceDirectory` et `FederatedServiceEndpoint` partagent désormais un seul point
+d'implémentation pour l'appel `urllib` et la traduction de statut (`call_peer`/`build_url`, extraits
+de l'ancien `call.py`) : la logique de la section 2 ci-dessus n'est écrite qu'une fois. Comportement
+inchangé, y compris la propagation non enveloppée des erreurs réseau (section 2/9).
+
+### E. Tests ajoutés
+
+| Fichier | Contenu |
+|---|---|
+| `test_capabilities.py` | `RemoteCapabilities` contre une liste de faux `IExposedService` |
+| `test_discovery.py` | `ServiceDirectory` : découverte au démarrage, pair injoignable ne casse pas `start()`, cache hit sans requête, cache miss déclenche une requête live, service absent partout → `None` |
+| `test_federated_endpoint.py` | `FederatedServiceEndpoint` : tous les cas locaux de `ServiceEndpoint` reproduits, priorité locale sur un nom aussi connu du répertoire, bascule distante, pair disparu, absent partout → `NotFound` |
+| `test_federated_framework.py` | **Le test le plus important de cet addendum** : deux vrais processus (« conteneur A » en cours de test, « conteneur B » en sous-processus, port 18161), `FederatedServiceEndpoint` + `RemoteServer` seuls, aucun `peer_id`/nom de service au site d'appel — prouve la transparence de bout en bout |
+
 ## 9. Risques
 
 - **Aucune authentification vers le pair** : un `RemoteServer` mal configuré (pointant vers un service
@@ -256,3 +389,17 @@ remote/
   (dépendance à `uv`/l'environnement Python du sous-processus, délai de démarrage attendu par polling) —
   accepté car c'est la seule façon d'obtenir deux `Framework` Pelix réels simultanés, et c'est la forme la
   plus fidèle du scénario réel (deux processus distincts).
+- **(2026-09-16) `__remote_capabilities__` divulgue les noms de services locaux sans authentification** :
+  tout appelant réseau peut lister ce qu'une instance publie, atténué uniquement par le fait que seuls des
+  *noms* sont exposés (pas de données, pas d'appel possible via ce service) — voir addendum, section A.
+  Assumé, pas corrigé, pour la même raison que l'absence d'authentification vers le pair (section 3) :
+  corriger nécessiterait de transmettre un sujet, hors périmètre.
+- **(2026-09-16) `ServiceDirectory` peut être périmé** : un service qui change de pair, disparaît ou
+  apparaît entre deux découvertes n'est visible qu'à la prochaine découverte (miss de cache ou nouveau
+  `start()`), jamais poussé — voir addendum, section B. Un appel vers une entrée périmée échoue au moment
+  de l'appel réel (erreur réseau non enveloppée, ou 404 du pair), pas avant.
+- **(2026-09-16) Charger `ycappuccino.endpoints_service` et `ycappuccino.remote` ensemble rend l'un des
+  deux `IServiceEndpoint` totalement inopérant pour les appels HTTP**, silencieusement, selon l'ordre de
+  scan de `bundle_prefix` — voir addendum, section C « Pourquoi ». Pas une simple ambiguïté de priorité :
+  une régression silencieuse et totale pour l'un des deux mécanismes. Documenté comme règle opérationnelle
+  dans le README, non applicable automatiquement par le framework (aucun garde-fou technique ajouté).
