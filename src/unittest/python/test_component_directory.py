@@ -26,6 +26,12 @@ class IInventoryService(YCappuccinoComponent, abc.ABC):
         """units available"""
 
 
+class ConcreteThing:
+    """a plain, non-abstract class -- stands in for a peer's own concrete component class name,
+    always present alongside its interfaces in a "provides" list, see
+    component_factory._provided_specifications."""
+
+
 QUALIFIED_A = f"{__name__}.IInventoryService"
 # QUALIFIED_B is never resolved in any test that asserts on proxy creation -- only used to prove
 # locate()'s cache-miss requery finds a *newly* registered peer, resolve_class is irrelevant there
@@ -172,6 +178,26 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         await directory._discover_all()
 
         self.assertEqual(len(instantiate.calls), 1)
+
+    async def test_does_not_spawn_a_proxy_for_a_peers_own_concrete_class_name(self):
+        # a peer's "provides" always lists BOTH a component's own concrete class name and every
+        # interface it implements (see component_factory._provided_specifications) -- only the
+        # latter (an abstract class) is worth proxying, see component_directory.py's comment.
+        concrete_path = f"{__name__}.ConcreteThing"
+        manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
+        opener = FakeComponentsOpener(
+            {"a.example:9000": [_component("somewhere", "InventoryService", [concrete_path, QUALIFIED_A])]}
+        )
+        instantiate = RecordingInstantiate()
+        directory = ComponentDirectory(
+            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+        )
+
+        await directory._discover_all()
+
+        self.assertEqual(len(instantiate.calls), 1)
+        component, _ = instantiate.calls[0]
+        self.assertTrue(issubclass(component, IInventoryService))
 
     async def test_unresolvable_qualified_path_is_skipped_without_crashing(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})

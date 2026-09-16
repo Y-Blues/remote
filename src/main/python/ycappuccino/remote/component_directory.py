@@ -62,6 +62,7 @@ specification -- option (a) -- which this addendum does not build a generic orch
 (out of scope, see design doc addendum part D).
 """
 
+import inspect
 import logging
 import threading
 from typing import Optional
@@ -183,6 +184,17 @@ class ComponentDirectory(ITrigger):
             _logger.warning(
                 "ComponentDirectory: cannot resolve %r, no proxy created", qualified_path, exc_info=True
             )
+            return
+        if not inspect.isabstract(interface):
+            # a peer's "components" list carries, for each of its components, BOTH its own
+            # concrete class name AND every interface it implements (see
+            # component_factory._provided_specifications) -- only the latter is a genuine
+            # interface worth proxying. Synthesizing a "proxy" for the concrete class itself
+            # would have no abstract method to override, so it would silently fall back to
+            # inheriting the REAL class's own methods via MRO -- executing them LOCALLY, without
+            # ever crossing the network, and quite possibly breaking on state its own real
+            # __init__ would have set up. Skipped, silently: this is the normal, expected case
+            # for every single discovered component, not an error.
             return
         try:
             proxy_class = make_generic_proxy(interface, qualified_path)
