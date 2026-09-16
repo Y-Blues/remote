@@ -14,9 +14,24 @@ IExposedService it publishes locally (not call them -- the peer still applies it
 authorization/secure flag to each named service when the name is actually called -- and not see
 any data). This is a real, minor information disclosure, accepted as part of remote's existing
 "trusted internal cluster" scope. Do not put anything sensitive in a service's *name*.
+
+(2026-09-16, second addendum) Widened, additively, with core's Framework.list_components(): the
+response now also carries "components" (every locally installed NATIVE component and the fully
+qualified path of every specification it provides -- see core/README.md), used by
+component_directory.ComponentDirectory to discover ANY qualified specification, not just
+IExposedService names, and to dynamically synthesize a matching local proxy for one it does not
+have locally (see component_directory.py, dispatch.py, remote_proxy.py). "components" is omitted
+entirely when there is nothing to report (no Framework initialized, or zero native components
+installed) so the response shape callers already depend on ({"services": [...]}, see
+test_capabilities.py) is completely unchanged in that case -- a strictly additive key, never a
+replacement of the existing "services" list. This is a further, larger widening of what a peer's
+capabilities probe discloses than the "service names only" tradeoff above: see dispatch.py's own
+module docstring for the full security discussion (arbitrary method invocation on ANY published
+specification, not just deliberately exposed IExposedServices).
 """
 
 from ycappuccino.api.endpoints_service import IExposedService, ServiceResult
+from ycappuccino.core.framework import Framework
 
 CAPABILITIES_SERVICE_NAME = "__remote_capabilities__"
 
@@ -35,4 +50,8 @@ class RemoteCapabilities(IExposedService):
         pass
 
     async def call(self, method, extra_path, params, body, subject):
-        return ServiceResult(body={"services": [service.name for service in list(self._services) if service.name]})
+        result = {"services": [service.name for service in list(self._services) if service.name]}
+        components = Framework.get_framework().list_components()
+        if components:
+            result["components"] = components
+        return ServiceResult(body=result)

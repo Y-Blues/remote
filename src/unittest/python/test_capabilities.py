@@ -8,7 +8,13 @@ import unittest
 
 from remote_fixtures import FakeExposedService
 
+from ycappuccino.core.framework import ComponentDescription, Framework
 from ycappuccino.remote.capabilities import CAPABILITIES_SERVICE_NAME, RemoteCapabilities
+
+
+class _FakeComponent:
+    __module__ = "somewhere"
+    __qualname__ = "FakeComponent"
 
 
 class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
@@ -42,6 +48,43 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(RemoteCapabilities.name, CAPABILITIES_SERVICE_NAME)
         self.assertFalse(RemoteCapabilities.secure)
         self.assertEqual(CAPABILITIES_SERVICE_NAME, "__remote_capabilities__")
+
+    async def test_omits_components_when_the_framework_reports_none(self):
+        # No Framework().init() ever ran in this process (or the one that did already reset the
+        # singleton on stop(), see Framework.stop()): list_components() is empty, so "components"
+        # must not appear at all -- the pre-existing {"services": [...]} shape stays byte-for-byte
+        # identical, see the module docstring's "strictly additive key" note.
+        previous = Framework._singleton
+        Framework._singleton = Framework()
+        self.addCleanup(setattr, Framework, "_singleton", previous)
+
+        capabilities = RemoteCapabilities([FakeExposedService("echo")])
+        result = await capabilities.call("GET", [], {}, None, None)
+
+        self.assertEqual(result.body, {"services": ["echo"]})
+
+    async def test_adds_components_when_the_framework_has_native_components_installed(self):
+        description = ComponentDescription(
+            _FakeComponent, provides=["FakeComponent"], provides_qualified=["somewhere.FakeComponent"]
+        )
+        framework = Framework()
+        framework._components = {"somewhere.FakeComponent": description}
+        previous = Framework._singleton
+        Framework._singleton = framework
+        self.addCleanup(setattr, Framework, "_singleton", previous)
+
+        capabilities = RemoteCapabilities([FakeExposedService("echo")])
+        result = await capabilities.call("GET", [], {}, None, None)
+
+        self.assertEqual(
+            result.body,
+            {
+                "services": ["echo"],
+                "components": [
+                    {"module": "somewhere", "class": "FakeComponent", "provides": ["somewhere.FakeComponent"]}
+                ],
+            },
+        )
 
 
 if __name__ == "__main__":
