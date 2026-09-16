@@ -17,6 +17,8 @@ from ycappuccino.storage.memory import MemoryStorage
 # importing the model registers it with ItemManager
 from ycappuccino.remote.models import remote_server  # noqa: F401
 
+ALICE = {"sub": "alice", "tid": "acme"}
+
 
 def create_manager():
     """manager on a memory storage; the caller removes the returned directory"""
