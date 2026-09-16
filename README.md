@@ -190,6 +190,84 @@ de ce scénario (deux processus réels, port 18161 de la plage réservée 18160-
 service et même structure de `bundle_prefix` que ci-dessus, avec les assertions qui prouvent l'appel
 transparent de bout en bout.
 
+## Découverte générique et proxys dynamiques (n'importe quelle spécification)
+
+Tout ce qui précède (`RemoteCall`, `FederatedServiceEndpoint`) ne fédère qu'`IServiceEndpoint`. Une
+troisième utilisation de `remote` couvre le cas où l'interface à fédérer n'est **pas**
+`IServiceEndpoint` du tout, mais une interface définie par une application (`IInventoryService`,
+disons) — que `remote` n'a jamais vue et ne connaît pas à l'avance. Choix de l'utilisateur, explicite
+et sans ambiguïté : un mécanisme **totalement générique**, aucune liste d'interfaces codée en dur.
+
+**Mise en place** : `ycappuccino.remote` publie automatiquement, en plus de `__remote_capabilities__`
+(section précédente), une clé `"components"` dans sa réponse — la liste `Framework.list_components()`
+de l'instance — et un nouveau service réservé `__remote_dispatch__` (`secure=False`, même raison
+structurelle que `__remote_capabilities__`) capable d'appeler n'importe quelle méthode de n'importe
+quelle spécification publiée localement. Aucune configuration supplémentaire : charger
+`ycappuccino.remote` suffit, exactement comme pour `RemoteCapabilities`/`ServiceDirectory`.
+
+Un composant natif dépendant de `IInventoryService`, définie et implémentée **seulement** sur un
+pair, obtient un proxy créé à la volée (résolu depuis le pair, synthétisé par réflexion,
+implémentant réellement l'interface, forwardant chaque appel en HTTP vers `__remote_dispatch__` du
+pair) **sans jamais nommer ce pair** :
+
+```python
+from ycappuccino.api.core_base import YCappuccinoComponent
+
+
+class InventoryConsumer(YCappuccinoComponent):
+    # IMPORTANT (voir « Contrat opérationnel » ci-dessous) : dépendance agrégée, jamais requise
+    def __init__(self, inventories: list[IInventoryService]):
+        self._inventories = inventories
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+    async def check(self, sku):
+        if not self._inventories:
+            return None  # le pair n'a pas encore été découvert -- voir le contrat ci-dessous
+        return await self._inventories[0].check_stock(sku)
+```
+
+Il faut, comme pour la découverte de service, enregistrer un `RemoteServer` pointant vers le pair
+(une seule fois, typiquement au démarrage d'un composant `IManager`) — c'est cet enregistrement qui
+déclenche la (re)découverte et la création du proxy, voir le contrat opérationnel ci-dessous.
+
+### Contrat opérationnel : piège de timing, à respecter absolument
+
+**Un composant qui dépend d'une interface fédérée dynamiquement de cette façon doit la déclarer
+comme dépendance optionnelle ou agrégée (`list[Interface]`), jamais comme paramètre de constructeur
+requis au sens strict.** Le proxy dynamique est créé en arrière-plan (thread détaché au démarrage, ou
+de façon synchrone mais **après coup** lors de l'enregistrement d'un pair) : rien ne garantit qu'il
+existe déjà quand `load_bundles()` instancie, dans la même passe de scan de `bundle_prefix`, un autre
+composant qui en dépendrait de façon stricte — voir `core/README.md`, « Piège de timing », et la
+conception (addendum, partie 2, section D) pour l'analyse complète et pourquoi cette option a été
+retenue plutôt que de séquencer la création du consommateur lui-même. Une dépendance agrégée est
+toujours « disponible » (vide au pire) et se peuple automatiquement (`bind()` d'iPOPO) dès que le
+proxy apparaît — c'est le mécanisme que `test_component_directory_framework.py` prouve de bout en
+bout, avec deux processus réels.
+
+### Sécurité : un élargissement réel
+
+**`__remote_dispatch__` rend n'importe quelle méthode de n'importe quelle spécification publiée
+localement appelable par le réseau** — pas seulement les `IExposedService` délibérément publiés sous
+un nom choisi (comme avant cet addendum). `IManager`, `ITrigger`, `IAuthorization`, une interface
+interne applicative jamais pensée pour le réseau : tout devient atteignable, sans authentification
+(même raison que partout ailleurs dans `remote` : aucun sujet n'est jamais transmis à un pair). C'est
+la conséquence directe et acceptée du choix de l'utilisateur pour un mécanisme totalement générique —
+voir la conception (addendum, partie 2, section C) pour la discussion complète. **Ne jamais exposer
+une instance chargeant `ycappuccino.remote` en dehors d'un réseau interne de confiance.**
+
+### Limites acceptées
+
+Arguments/retours : uniquement JSON-sérialisable (`str`/`int`/`float`/`bool`/`None`/`list`/`dict`).
+`*args`/`**kwargs` d'une interface : non générés par le proxy (uniquement exploitables via un appel
+`__remote_dispatch__` construit à la main). Une spécification résolvable mais dont l'instanciation du
+proxy générique échoue (ex. `IHttpServlet`, qui exige une propriété `"path"`) est ignorée en warning,
+jamais retentée. Voir la conception (addendum, partie 2, section E) pour la liste complète.
+
 ## Tester avec remote
 
 `RemoteCall` s'instancie directement avec un faux `IManager` et un faux « opener » HTTP, sans socket réel :
