@@ -12,8 +12,9 @@ params, body, subject)`) is therefore indistinguishable from a purely local call
 "this is a remote call" marker, anywhere. See the 2026-09-16 addendum of the design doc and the
 README section "Appel transparent".
 
-Why this duplicates ServiceEndpoint's local-lookup/authorization logic instead of depending on it
-and delegating: iPOPO/Pelix constructor injection has a deterministic tie-break rule for multiple
+A local service runs through endpoints_service's call_service (its call() override or its matching
+@rpc_method), exactly as under ServiceEndpoint. Why this still duplicates ServiceEndpoint's
+local-lookup/authorization logic instead of delegating to a ServiceEndpoint instance: iPOPO/Pelix constructor injection has a deterministic tie-break rule for multiple
 providers of the same specification (highest service.ranking, then lowest service id / first
 registered -- see pelix.internals.registry), but neither ServiceEndpoint nor
 FederatedServiceEndpoint sets an explicit ranking, and more importantly http_server's ApiServlet
@@ -32,6 +33,7 @@ from typing import Any, Callable
 from ycappuccino.api.endpoints_service import CALL, IExposedService, IServiceEndpoint, ServiceResult
 from ycappuccino.api.endpoints_storage import Forbidden, IAuthorization, NotAuthenticated, NotFound
 from ycappuccino.api.storage import IManager
+from ycappuccino.endpoints_service.endpoint import call_service
 from ycappuccino.remote._http import DEFAULT_TIMEOUT, REMOTE_SERVER_ITEM_ID, call_peer
 from ycappuccino.remote.discovery import ServiceDirectory
 
@@ -68,7 +70,7 @@ class FederatedServiceEndpoint(IServiceEndpoint):
         service = self._find_local(name)
         if service is not None:
             await self._check(service, subject)
-            return await service.call(method, extra_path, params, body, subject)
+            return await call_service(service, method, extra_path, params, body, subject)
 
         return await self._call_remote(name, method, extra_path, params, body, subject)
 

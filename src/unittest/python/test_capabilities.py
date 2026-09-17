@@ -8,7 +8,10 @@ import unittest
 
 from remote_fixtures import FakeExposedService
 
+from ycappuccino.api.decorators import get_rpc_methods
+from ycappuccino.api.endpoints_storage import NotFound
 from ycappuccino.core.framework import ComponentDescription, Framework
+from ycappuccino.endpoints_service.endpoint import ServiceEndpoint
 from ycappuccino.remote.capabilities import CAPABILITIES_SERVICE_NAME, RemoteCapabilities
 
 
@@ -23,31 +26,48 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
         services = [FakeExposedService("echo"), FakeExposedService("secret", secure=True)]
         capabilities = RemoteCapabilities(services)
 
-        result = await capabilities.call("GET", [], {}, None, None)
+        result = await capabilities.capabilities(None)
 
-        self.assertEqual(result.body, {"services": ["echo", "secret"]})
+        self.assertEqual(result, {"services": ["echo", "secret"]})
 
     async def test_ignores_services_without_a_name(self):
         unnamed = FakeExposedService("")
         capabilities = RemoteCapabilities([unnamed])
 
-        result = await capabilities.call("GET", [], {}, None, None)
+        result = await capabilities.capabilities(None)
 
-        self.assertEqual(result.body, {"services": []})
+        self.assertEqual(result, {"services": []})
 
     async def test_reflects_the_live_list(self):
         services = []
         capabilities = RemoteCapabilities(services)
         services.append(FakeExposedService("added_later"))
 
-        result = await capabilities.call("GET", [], {}, None, None)
+        result = await capabilities.capabilities(None)
 
-        self.assertEqual(result.body, {"services": ["added_later"]})
+        self.assertEqual(result, {"services": ["added_later"]})
 
     async def test_is_named_and_unsecured(self):
         self.assertEqual(RemoteCapabilities.name, CAPABILITIES_SERVICE_NAME)
         self.assertFalse(RemoteCapabilities.secure)
         self.assertEqual(CAPABILITIES_SERVICE_NAME, "__remote_capabilities__")
+
+    async def test_it_answers_a_public_get(self):
+        metadata = get_rpc_methods(RemoteCapabilities)["capabilities"]
+
+        self.assertEqual((metadata["method"], metadata["path"], metadata["secure"]), ("GET", "", False))
+
+    async def test_get_is_routed_by_the_service_endpoint_and_anything_else_is_not_found(self):
+        previous = Framework._singleton
+        Framework._singleton = Framework()
+        self.addCleanup(setattr, Framework, "_singleton", previous)
+        endpoint = ServiceEndpoint([RemoteCapabilities([FakeExposedService("echo")])], [])
+
+        result = await endpoint.call(CAPABILITIES_SERVICE_NAME, "GET", [], {}, None, None)
+
+        self.assertEqual(result.body, {"services": ["echo"]})
+        with self.assertRaises(NotFound):
+            await endpoint.call(CAPABILITIES_SERVICE_NAME, "POST", [], {}, None, None)
 
     async def test_omits_components_when_the_framework_reports_none(self):
         # No Framework().init() ever ran in this process (or the one that did already reset the
@@ -59,9 +79,9 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(setattr, Framework, "_singleton", previous)
 
         capabilities = RemoteCapabilities([FakeExposedService("echo")])
-        result = await capabilities.call("GET", [], {}, None, None)
+        result = await capabilities.capabilities(None)
 
-        self.assertEqual(result.body, {"services": ["echo"]})
+        self.assertEqual(result, {"services": ["echo"]})
 
     async def test_adds_components_when_the_framework_has_native_components_installed(self):
         description = ComponentDescription(
@@ -74,10 +94,10 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(setattr, Framework, "_singleton", previous)
 
         capabilities = RemoteCapabilities([FakeExposedService("echo")])
-        result = await capabilities.call("GET", [], {}, None, {"peer": "backend-1"})
+        result = await capabilities.capabilities({"peer": "backend-1"})
 
         self.assertEqual(
-            result.body,
+            result,
             {
                 "services": ["echo"],
                 "components": [
@@ -106,10 +126,10 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
 
         for subject in (None, {"sub": "alice", "tid": "acme"}):
             with self.subTest(subject=subject):
-                result = await capabilities.call("GET", [], {}, None, subject)
+                result = await capabilities.capabilities(subject)
 
                 self.assertEqual(
-                    result.body["components"],
+                    result["components"],
                     [{"module": "somewhere", "class": "FakeComponent",
                       "provides": ["ycappuccino.api.permissions.ILoginService"]}],
                 )
@@ -124,9 +144,9 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
         Framework._singleton = framework
         self.addCleanup(setattr, Framework, "_singleton", previous)
 
-        result = await RemoteCapabilities([]).call("GET", [], {}, None, None)
+        result = await RemoteCapabilities([]).capabilities(None)
 
-        self.assertEqual(result.body, {"services": []})
+        self.assertEqual(result, {"services": []})
 
 
 if __name__ == "__main__":

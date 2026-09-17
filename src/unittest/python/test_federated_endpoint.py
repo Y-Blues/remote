@@ -49,6 +49,30 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.body, {"ok": True})
         self.assertEqual(echo.calls, [("POST", ["extra"], {"q": "1"}, {"msg": "hi"}, None)])
 
+    async def test_a_local_service_answering_through_rpc_methods_is_routed(self):
+        from ycappuccino.api.decorators import rpc_method
+        from ycappuccino.api.endpoints_service import IExposedService
+
+        class Greeting(IExposedService):
+            name = "greeting"
+            secure = False
+
+            async def start(self):
+                pass
+
+            async def stop(self):
+                pass
+
+            @rpc_method(method="POST", path="/{language}")
+            async def greet(self, language: str, who: str) -> dict:
+                return {"language": language, "who": who}
+
+        endpoint = FederatedServiceEndpoint([Greeting()], [], FakeDirectory(), FakeManager())
+
+        result = await endpoint.call("greeting", "POST", ["fr"], {}, {"who": "Alice"}, None)
+
+        self.assertEqual(result.body, {"language": "fr", "who": "Alice"})
+
     async def test_local_secured_service_requires_a_subject(self):
         secret = FakeExposedService("secret")
         endpoint = FederatedServiceEndpoint([secret], [FakeAuthorization()], FakeDirectory(), FakeManager())

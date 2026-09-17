@@ -35,10 +35,8 @@ least one @rpc_method: the public surface it can actually call through __remote_
 for ycappuccino.client to create its proxies before anyone signs in.
 """
 
-from typing import Any
-
-from ycappuccino.api.decorators import get_rpc_methods
-from ycappuccino.api.endpoints_service import IExposedService, ServiceResult
+from ycappuccino.api.decorators import get_rpc_methods, rpc_method
+from ycappuccino.api.endpoints_service import IExposedService
 from ycappuccino.core.component_factory import resolve_class
 from ycappuccino.core.framework import Framework
 
@@ -58,16 +56,15 @@ class RemoteCapabilities(IExposedService):
     async def stop(self) -> None:
         pass
 
-    async def call(
-        self, method: str, extra_path: list, params: dict, body: Any, subject: dict | None
-    ) -> ServiceResult:
+    @rpc_method(method="GET", summary="list the services and components this instance exposes", secure=False)
+    async def capabilities(self, subject: dict | None) -> dict:
         result = {"services": [service.name for service in list(self._services) if service.name]}
         components = Framework.get_framework().list_components()
         if subject is None or "peer" not in subject:
             components = _public_only(components)
         if components:
             result["components"] = components
-        return ServiceResult(body=result)
+        return result
 
 
 def _public_only(components: list) -> list:
