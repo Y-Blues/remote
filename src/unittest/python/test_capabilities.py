@@ -12,7 +12,11 @@ from ycappuccino.api.decorators import get_rpc_methods
 from ycappuccino.api.endpoints_storage import NotFound
 from ycappuccino.core.framework import ComponentDescription, Framework
 from ycappuccino.endpoints_service.endpoint import ServiceEndpoint
+from ycappuccino.api.permissions import ILoginService
 from ycappuccino.remote.capabilities import CAPABILITIES_SERVICE_NAME, RemoteCapabilities
+from ycappuccino.remote.signatures import describe_interface
+
+LOGIN = "ycappuccino.api.permissions.ILoginService"
 
 
 class _FakeComponent:
@@ -147,6 +151,48 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
         result = await RemoteCapabilities([]).capabilities(None)
 
         self.assertEqual(result, {"services": []})
+
+    def _install(self, *provides_qualified):
+        framework = Framework()
+        framework._components = {
+            f"somewhere.Component{index}": ComponentDescription(
+                _FakeComponent, provides=[], provides_qualified=list(provides)
+            )
+            for index, provides in enumerate(provides_qualified)
+        }
+        previous = Framework._singleton
+        Framework._singleton = framework
+        self.addCleanup(setattr, Framework, "_singleton", previous)
+
+    async def test_a_peer_gets_the_signatures_of_every_provided_interface_once(self):
+        self._install(
+            ["somewhere.FakeComponent", LOGIN, "ycappuccino.api.storage.IManager"],
+            [LOGIN, "pelix.http.servlet"],
+        )
+
+        result = await RemoteCapabilities([]).capabilities({"peer": "backend-1"})
+
+        descriptors = {descriptor["specification"]: descriptor["methods"] for descriptor in result["descriptors"]}
+        self.assertEqual(sorted(descriptors), [LOGIN, "ycappuccino.api.storage.IManager"])
+        self.assertEqual(descriptors[LOGIN], describe_interface(ILoginService, public_only=False))
+        self.assertIn("up_sert_model", [method["name"] for method in descriptors["ycappuccino.api.storage.IManager"]])
+
+    async def test_anyone_else_gets_the_public_signatures_only(self):
+        self._install([LOGIN, "ycappuccino.api.storage.IManager"])
+
+        result = await RemoteCapabilities([]).capabilities(None)
+
+        self.assertEqual(
+            result["descriptors"],
+            [{"specification": LOGIN, "methods": describe_interface(ILoginService, public_only=True)}],
+        )
+
+    async def test_no_describable_interface_means_no_descriptors_key(self):
+        self._install(["somewhere.FakeComponent", "pelix.http.servlet"])
+
+        result = await RemoteCapabilities([]).capabilities({"peer": "backend-1"})
+
+        self.assertNotIn("descriptors", result)
 
 
 if __name__ == "__main__":

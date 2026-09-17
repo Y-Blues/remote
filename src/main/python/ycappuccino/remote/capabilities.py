@@ -33,12 +33,19 @@ specification, not just deliberately exposed IExposedServices).
 caller -- a browser, signed in or not -- only gets, in "components", the specifications having at
 least one @rpc_method: the public surface it can actually call through __remote_dispatch__, enough
 for ycappuccino.client to create its proxies before anyone signs in.
+
+"descriptors" (additive, omitted when empty) gives, for every interface listed in "components", the
+signatures of the methods this caller may invoke (signatures.describe_interface): every dispatchable
+method for a peer, the @rpc_method ones for anyone else. ServiceCatalog (catalog.py) stores them.
 """
+
+import inspect
 
 from ycappuccino.api.decorators import get_rpc_methods, rpc_method
 from ycappuccino.api.endpoints_service import IExposedService
 from ycappuccino.core.component_factory import resolve_class
 from ycappuccino.core.framework import Framework
+from ycappuccino.remote.signatures import describe_interface
 
 CAPABILITIES_SERVICE_NAME = "__remote_capabilities__"
 
@@ -59,11 +66,15 @@ class RemoteCapabilities(IExposedService):
     @rpc_method(method="GET", summary="list the services and components this instance exposes", secure=False)
     async def capabilities(self, subject: dict | None) -> dict:
         result = {"services": [service.name for service in list(self._services) if service.name]}
+        public_only = subject is None or "peer" not in subject
         components = Framework.get_framework().list_components()
-        if subject is None or "peer" not in subject:
+        if public_only:
             components = _public_only(components)
         if components:
             result["components"] = components
+        descriptors = describe_components(components, public_only)
+        if descriptors:
+            result["descriptors"] = descriptors
         return result
 
 
@@ -74,6 +85,23 @@ def _public_only(components: list) -> list:
         if provides:
             public.append({**component, "provides": provides})
     return public
+
+
+def describe_components(components: list, public_only: bool) -> list:
+    """the descriptors of the interfaces the components provide, each described once"""
+    descriptors = []
+    specifications = dict.fromkeys(path for component in components for path in component["provides"])
+    for qualified_path in specifications:
+        try:
+            interface = resolve_class(qualified_path)
+        except Exception:
+            continue  # a Pelix marker such as "pelix.http.servlet", never a class
+        if not inspect.isabstract(interface):
+            continue  # a component's own concrete class: only its interfaces are described
+        methods = describe_interface(interface, public_only)
+        if methods:
+            descriptors.append({"specification": qualified_path, "methods": methods})
+    return descriptors
 
 
 def _is_public(qualified_path: str) -> bool:

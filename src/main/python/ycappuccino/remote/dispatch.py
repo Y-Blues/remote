@@ -42,12 +42,11 @@ from ycappuccino.api.endpoints_storage import Forbidden, IAuthorization, Invalid
 from ycappuccino.api.proxy import Proxy
 from ycappuccino.core.component_factory import resolve_class
 from ycappuccino.core.framework import Framework
+from ycappuccino.remote.signatures import is_dispatchable
 
 _logger = logging.getLogger(__name__)
 
 DISPATCH_SERVICE_NAME = "__remote_dispatch__"
-
-_NEVER_DISPATCHABLE = {"start", "stop", "bind", "un_bind"}
 
 
 def _default_locate_service(specification_name: str) -> tuple:
@@ -111,7 +110,7 @@ class RemoteDispatch(IExposedService):
         if len(extra_path) != 2:
             raise InvalidRequest(f"{DISPATCH_SERVICE_NAME} expects /<qualified path>/<method name>")
         qualified_path, method_name = extra_path
-        if method_name in _NEVER_DISPATCHABLE or method_name.startswith("_"):
+        if not is_dispatchable(method_name):
             raise NotFound(f"{qualified_path!r} has no callable method {method_name!r}")
 
         try:

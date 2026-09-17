@@ -298,6 +298,37 @@ Arguments/retours : uniquement JSON-sérialisable (`str`/`int`/`float`/`bool`/`N
 proxy générique échoue (ex. `IHttpServlet`, qui exige une propriété `"path"`) est ignorée en warning,
 jamais retentée. Voir la conception (addendum, partie 2, section E) pour la liste complète.
 
+## Catalogue : quelles interfaces, quelles signatures, sur quel serveur
+
+`__remote_capabilities__` ajoute une clé `"descriptors"` (omise si vide) : pour chaque interface listée
+dans `"components"`, la signature des méthodes que l'appelant peut invoquer (`signatures.describe_interface`) :
+
+```json
+{"specification": "ycappuccino.api.permissions.ILoginService",
+ "methods": [{"name": "login", "params": {"login": "str", "password": "str"}, "return_type": "str",
+              "rpc": {"method": "POST", "path": "", "summary": "...", "secure": false}}]}
+```
+
+Un pair signé reçoit toutes les méthodes appelables (`"rpc": null` pour une méthode interne) ; les autres,
+seulement les `@rpc_method`. Les types sont des noms (`"str"`, `"dict | None"`, `"module.Classe"`) ; le
+paramètre `subject` n'apparaît jamais.
+
+`ServiceCatalog` (publié avec `ycappuccino.remote`) garde ces descriptions dans l'item `ServiceDescriptor`
+(collection `service_descriptors`, `/api/crud/service-descriptors`, lecture et écriture sécurisées) :
+une entrée par couple (pair, interface), `peer_id` étant l'id du `RemoteServer` par lequel l'appeler.
+Chaque instance garde les descriptions de ses pairs dans son propre stockage : rien n'est partagé.
+
+```python
+await catalog.refresh_peer("eu-node-2")   # relit ce pair et remplace ce qu'on savait de lui
+await catalog.refresh_all()               # tous les RemoteServer ; un pair injoignable garde sa dernière description
+await catalog.locate("ycappuccino.api.permissions.ILoginService")
+# [{"peer_id": "", "methods": [...]},                                   <- cette instance, si elle la fournit
+#  {"peer_id": "eu-node-2", "host": "eu-node-2.internal", "port": 9000, "scheme": "http", "methods": [...]}]
+```
+
+`start()` lance `refresh_all()` en arrière-plan. Un pair dont le secret est faux est traité en anonyme :
+il ne décrit que ses interfaces publiques.
+
 ## Tester avec remote
 
 `RemoteCall` s'instancie directement avec un faux `IManager` et un faux « opener » HTTP, sans socket réel :

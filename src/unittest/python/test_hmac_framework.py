@@ -31,6 +31,7 @@ PEER_APPLICATION = {
           - ycappuccino.http_server
           - ycappuccino.remote.models
           - ycappuccino.remote.peer_authentication
+          - ycappuccino.remote.capabilities
           - PACKAGE
         layers:
           ycappuccino_storage_memory:
@@ -174,6 +175,7 @@ class TestPeerHmacAcrossTwoProcesses(unittest.TestCase):
             server.secret(secret)
             asyncio.run(manager.up_sert_model(server, subject=None))
         cls.remote_call = context.get_service(context.get_service_reference("RemoteCall"))
+        cls.catalog = context.get_service(context.get_service_reference("ServiceCatalog"))
 
     def test_a_signed_call_authenticates_as_the_peer(self):
         result = asyncio.run(self.remote_call.call("POST", ["peer", "whoami"], {}, {}, None))
@@ -186,6 +188,31 @@ class TestPeerHmacAcrossTwoProcesses(unittest.TestCase):
         )
 
         self.assertEqual(result.body, {"subject": {"sub": "alice", "tid": "acme", "peer": "hmaccaller"}})
+
+    def test_the_catalog_stores_the_full_signatures_a_signed_peer_describes(self):
+        from ycappuccino.api.storage import IManager
+        from ycappuccino.remote.signatures import describe_interface
+
+        manager_path = "ycappuccino.api.storage.IManager"
+
+        specifications = asyncio.run(self.catalog.refresh_peer("peer"))
+        located = asyncio.run(self.catalog.locate(manager_path))
+
+        self.assertIn(manager_path, specifications)
+        peer_entry = [entry for entry in located if entry["peer_id"] == "peer"]
+        self.assertEqual(
+            peer_entry,
+            [{"peer_id": "peer", "host": "localhost", "port": PEER_PORT, "scheme": "http",
+              "methods": describe_interface(IManager, public_only=False)}],
+        )
+
+    def test_the_catalog_of_an_unauthenticated_peer_holds_no_internal_interface(self):
+        # a rejected signature leaves an anonymous caller: capabilities answers its public view only
+        specifications = asyncio.run(self.catalog.refresh_peer("peer-with-wrong-secret"))
+
+        self.assertNotIn("ycappuccino.api.storage.IManager", specifications)
+        located = asyncio.run(self.catalog.locate("ycappuccino.api.storage.IManager"))
+        self.assertNotIn("peer-with-wrong-secret", [entry["peer_id"] for entry in located])
 
     def test_a_wrong_secret_is_not_authenticated(self):
         with self.assertRaises(NotAuthenticated):
