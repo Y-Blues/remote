@@ -15,6 +15,8 @@ from discovery_fixtures import FakeManager, FakeResponse
 
 from ycappuccino.api.core_base import YCappuccinoComponent
 from ycappuccino.remote.component_directory import ComponentDirectory
+from ycappuccino.remote.configured_peers import ConfiguredPeers
+from ycappuccino.remote.stored_peers import StoredPeers
 
 
 class IInventoryService(YCappuccinoComponent, abc.ABC):
@@ -77,7 +79,7 @@ class TestComponentDirectoryDiscovery(unittest.IsolatedAsyncioTestCase):
         opener = FakeComponentsOpener(
             {"a.example:9000": [_component("somewhere", "InventoryService", [QUALIFIED_A])]}
         )
-        directory = ComponentDirectory(manager, opener=opener, local_specifications=lambda: set())
+        directory = ComponentDirectory([StoredPeers(manager)], opener=opener, local_specifications=lambda: set())
 
         located = await directory.locate(QUALIFIED_A)
 
@@ -86,7 +88,7 @@ class TestComponentDirectoryDiscovery(unittest.IsolatedAsyncioTestCase):
     async def test_unreachable_peer_does_not_crash_discovery(self):
         manager = FakeManager({"down": {"host": "down.example", "port": 9000, "scheme": "http"}})
         opener = FakeComponentsOpener({"down.example:9000": urllib.error.URLError("connection refused")})
-        directory = ComponentDirectory(manager, opener=opener, local_specifications=lambda: set())
+        directory = ComponentDirectory([StoredPeers(manager)], opener=opener, local_specifications=lambda: set())
 
         with self.assertLogs("ycappuccino.remote.component_directory", "WARNING"):
             located = await directory.locate(QUALIFIED_A)  # must not raise
@@ -98,7 +100,7 @@ class TestComponentDirectoryDiscovery(unittest.IsolatedAsyncioTestCase):
         opener = FakeComponentsOpener(
             {"a.example:9000": [_component("somewhere", "InventoryService", [QUALIFIED_A])]}
         )
-        directory = ComponentDirectory(manager, opener=opener, local_specifications=lambda: set())
+        directory = ComponentDirectory([StoredPeers(manager)], opener=opener, local_specifications=lambda: set())
         await directory._discover_all()
         opener.requests.clear()
 
@@ -110,7 +112,7 @@ class TestComponentDirectoryDiscovery(unittest.IsolatedAsyncioTestCase):
     async def test_locate_cache_miss_triggers_a_live_requery(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
         opener = FakeComponentsOpener({"a.example:9000": []})
-        directory = ComponentDirectory(manager, opener=opener, local_specifications=lambda: set())
+        directory = ComponentDirectory([StoredPeers(manager)], opener=opener, local_specifications=lambda: set())
         await directory._discover_all()
 
         manager.add_peer("b", "b.example", 9001, "http")
@@ -123,7 +125,7 @@ class TestComponentDirectoryDiscovery(unittest.IsolatedAsyncioTestCase):
     async def test_absent_everywhere_returns_none(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
         opener = FakeComponentsOpener({"a.example:9000": []})
-        directory = ComponentDirectory(manager, opener=opener, local_specifications=lambda: set())
+        directory = ComponentDirectory([StoredPeers(manager)], opener=opener, local_specifications=lambda: set())
 
         self.assertIsNone(await directory.locate("nowhere.Nothing"))
 
@@ -137,7 +139,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
         await directory._discover_all()
@@ -158,7 +160,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
         await directory._discover_all()
@@ -173,7 +175,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: {QUALIFIED_A}
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: {QUALIFIED_A}
         )
 
         await directory._discover_all()
@@ -187,7 +189,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
         await directory._discover_all()
@@ -206,7 +208,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
         await directory._discover_all()
@@ -226,7 +228,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
         with self.assertNoLogs("ycappuccino.remote.component_directory", "WARNING"):
@@ -241,7 +243,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
         with self.assertLogs("ycappuccino.remote.component_directory", "WARNING"):
@@ -256,7 +258,7 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
         await directory.execute("upsert", "remoteServer", None)
@@ -278,16 +280,86 @@ class TestComponentDirectoryStart(unittest.IsolatedAsyncioTestCase):
         )
         instantiate = RecordingInstantiate()
         directory = ComponentDirectory(
-            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+            [StoredPeers(manager)], opener=opener, instantiate=instantiate, local_specifications=lambda: set()
         )
 
-        await directory.start()  # must return immediately, before discovery necessarily ran
+        await directory.start()
+        self.addAsyncCleanup(directory.stop)  # must return immediately, before discovery necessarily ran
 
         deadline = time.monotonic() + 2.0
         while not instantiate.calls and time.monotonic() < deadline:
             time.sleep(0.01)
 
         self.assertEqual(len(instantiate.calls), 1)
+
+
+
+class TestComponentDirectoryFromConfiguration(unittest.IsolatedAsyncioTestCase):
+
+    async def test_configured_peers_are_discovered_without_any_storage(self):
+        opener = FakeComponentsOpener({"a.example:9000": [_component("somewhere", "InventoryService", [QUALIFIED_A])]})
+        instantiate = RecordingInstantiate()
+        directory = ComponentDirectory(
+            [ConfiguredPeers(peers="a=http://a.example:9000", secret="s3cr3t")],
+            opener=opener, instantiate=instantiate, local_specifications=lambda: set(),
+        )
+
+        await directory._discover_all()
+
+        (component, properties), = instantiate.calls
+        self.assertTrue(issubclass(component, IInventoryService))
+        self.assertEqual((properties["peer_host"], properties["peer_secret"]), ("a.example", "s3cr3t"))
+
+    async def test_a_peer_declared_without_address_is_not_queried(self):
+        opener = FakeComponentsOpener({})
+        directory = ComponentDirectory(
+            [ConfiguredPeers(peers="frontend", secret="s3cr3t")], opener=opener, local_specifications=lambda: set()
+        )
+
+        await directory._discover_all()
+
+        self.assertEqual(opener.requests, [])
+
+    async def test_only_the_configured_specifications_are_proxied(self):
+        opener = FakeComponentsOpener({"a.example:9000": [
+            _component("somewhere", "Things", [QUALIFIED_A, f"{__name__}.IBillingService"]),
+        ]})
+        instantiate = RecordingInstantiate()
+        directory = ComponentDirectory(
+            [ConfiguredPeers(peers="a=http://a.example:9000")], specifications=f" {__name__}.IBillingService ",
+            opener=opener, instantiate=instantiate, local_specifications=lambda: set(),
+        )
+
+        await directory._discover_all()
+
+        self.assertEqual([component.__name__ for component, _ in instantiate.calls], ["RemoteBillingService"])
+
+    async def test_a_peer_down_at_start_is_proxied_once_it_answers(self):
+        opener = FakeComponentsOpener({"a.example:9000": urllib.error.URLError("not started yet")})
+        instantiate = RecordingInstantiate()
+        directory = ComponentDirectory(
+            [ConfiguredPeers(peers="a=http://a.example:9000")], refresh=0.05,
+            opener=opener, instantiate=instantiate, local_specifications=lambda: set(),
+        )
+
+        await directory.start()
+        self.addAsyncCleanup(directory.stop)
+        time.sleep(0.2)
+        self.assertEqual(instantiate.calls, [])
+        opener.outcomes["a.example:9000"] = [_component("somewhere", "InventoryService", [QUALIFIED_A])]
+
+        deadline = time.time() + 5
+        while not instantiate.calls and time.time() < deadline:
+            time.sleep(0.05)
+
+        self.assertEqual(len(instantiate.calls), 1)
+
+
+class IBillingService(YCappuccinoComponent, abc.ABC):
+
+    @abc.abstractmethod
+    async def bill(self, amount: int) -> str:
+        """invoice id"""
 
 
 if __name__ == "__main__":

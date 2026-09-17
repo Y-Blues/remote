@@ -53,6 +53,26 @@ await manager.up_sert_model(server)
 **Important** : `remote` ne fait aucune découverte de pairs (pas de heartbeat, pas de failover) — choix
 délibéré, voir la conception. Un `RemoteServer` invalide (pair injoignable) ne se voit qu'à l'appel.
 
+### Pairs déclarés dans la configuration
+
+Un `RemoteServer` est rangé dans le stockage de l'instance. Une instance dont le stockage est lui-même un
+pair, ou qui n'a pas de stockage (un frontend), déclare ses pairs dans son `application.yml` :
+
+```yaml
+bundle_prefix:
+  - ycappuccino.remote.configured_peers
+components:
+  ConfiguredPeers:
+    peers: "storage=http://localhost:8201, frontend"   # id=scheme://host:port, ou un id seul
+    secret: "le secret partagé par ces pairs"
+```
+
+Un pair déclaré sans adresse n'est jamais interrogé : il est seulement connu pour authentifier ses appels
+signés (un processus sans serveur HTTP). Les deux sources publient `IPeers` (`ycappuccino.remote.peers`) :
+`StoredPeers` (`ycappuccino.remote.stored_peers`, les `RemoteServer`) et `ConfiguredPeers`.
+`ComponentDirectory` et `PeerHmacAuthentication` lisent toutes les sources publiées ; `RemoteCall`,
+`ServiceDirectory`, `FederatedServiceEndpoint` et `ServiceCatalog` ne lisent encore que les `RemoteServer`.
+
 ## Appeler un service sur le pair
 
 ```
@@ -84,8 +104,8 @@ class Caller(YCappuccinoComponent):
 
 ## Authentification
 
-Deux instances s'authentifient par une signature HMAC-SHA256 de chaque requête, avec le `secret` de leur
-`RemoteServer` respectif (le même secret enregistré des deux côtés). Rien de secret ne circule :
+Deux instances s'authentifient par une signature HMAC-SHA256 de chaque requête, avec le `secret` qu'elles
+connaissent l'une de l'autre (`RemoteServer` ou configuration, le même des deux côtés). Rien de secret ne circule :
 
 - **en sortie** (`_http.call_peer`, utilisé par tous les appels vers un pair) : si le `RemoteServer` a un
   `secret`, la requête reçoit `X-YCappuccino-Peer` (le `name` de l'`application.yml` local),
@@ -93,7 +113,7 @@ Deux instances s'authentifient par une signature HMAC-SHA256 de chaque requête,
   `méthode\nchemin\nhorodatage\nsujet\n` + corps. Sans `secret`, rien n'est signé : le pair voit une
   requête anonyme ;
 - **en entrée** : `PeerHmacAuthentication` (une `IAuthentication`, essayée par `http_server` avec les
-  autres, par exemple le JWT de `permissions_app`) retrouve le `RemoteServer` annoncé, vérifie la signature
+  autres, par exemple le JWT de `permissions_app`) retrouve le pair annoncé dans ses `IPeers`, vérifie la signature
   et refuse un horodatage à plus de 60 s. Le sujet obtenu est `{"peer": <id>}`.
 
 **Appel pour le compte d'un utilisateur** : le sujet reçu par `remote_call`, `FederatedServiceEndpoint` ou
@@ -102,7 +122,8 @@ signature ; le pair obtient alors `{"sub": ..., "tid": ..., "peer": <id>}`. Un s
 signature. Un service `secure=True` du pair est donc atteignable, son `IAuthorization` décide.
 
 Pour charger l'authentification seule, sans le reste de `remote`, lister les modules dans `bundle_prefix` :
-`ycappuccino.remote.models` et `ycappuccino.remote.peer_authentication`.
+`ycappuccino.remote.peer_authentication` et une source de pairs : `ycappuccino.remote.models` avec
+`ycappuccino.remote.stored_peers`, ou `ycappuccino.remote.configured_peers`.
 
 ## Erreurs
 
@@ -251,6 +272,16 @@ Il faut, comme pour la découverte de service, enregistrer un `RemoteServer` poi
 (une seule fois, typiquement au démarrage d'un composant `IManager`) — c'est cet enregistrement qui
 déclenche la (re)découverte et la création du proxy, voir le contrat opérationnel ci-dessous.
 
+`ComponentDirectory` refait sa découverte toutes les `refresh` secondes (10 par défaut) : un pair démarré
+après lui est trouvé sans rien réenregistrer. `specifications` (chemins qualifiés séparés par des virgules)
+limite les interfaces pour lesquelles il crée un proxy ; vide, il les crée toutes :
+
+```yaml
+components:
+  ComponentDirectory:
+    specifications: "ycappuccino.api.storage.IStorage"
+```
+
 ### Contrat opérationnel : piège de timing, à respecter absolument
 
 **Un composant qui dépend d'une interface fédérée dynamiquement de cette façon doit la déclarer
@@ -287,7 +318,7 @@ interfaces qui ont au moins une méthode `@rpc_method`.
 
 Un backend qui sert des navigateurs sans utiliser `FederatedServiceEndpoint` liste les modules plutôt que
 le paquet dans `bundle_prefix` : `ycappuccino.remote.dispatch`, `ycappuccino.remote.capabilities`,
-`ycappuccino.remote.models`, `ycappuccino.remote.peer_authentication` (le paquet entier fournirait un
+`ycappuccino.remote.models`, `ycappuccino.remote.stored_peers`, `ycappuccino.remote.peer_authentication` (le paquet entier fournirait un
 second `IServiceEndpoint`, en conflit avec `endpoints_service`).
 
 ### Limites acceptées

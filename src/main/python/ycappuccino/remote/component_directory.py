@@ -19,8 +19,8 @@ installation) for two different discovery mechanisms (service names only vs. eve
 specification) -- kept apart, like RemoteCall and RemoteDispatch, or like ServiceDirectory and
 FederatedServiceEndpoint already are.
 
-Discovery mechanism, mirroring ServiceDirectory's own discipline: every currently registered
-RemoteServer is queried, best effort (an unreachable peer is logged and skipped, never raises). A
+Discovery mechanism, mirroring ServiceDirectory's own discipline: every peer with an address, from every
+IPeers source (RemoteServer items, the configuration), is queried, best effort (an unreachable peer is logged and skipped, never raises). A
 qualified path already seen is never overwritten by a later discovery (first peer discovered
 wins, same "avoid duplicate specifications across peers" caveat as ServiceDirectory's own).
 `locate(qualified_path)` reads the cache first, and re-queries every peer live on a miss --
@@ -68,11 +68,12 @@ import threading
 from typing import Callable, Optional
 
 from ycappuccino.api.models import Model
-from ycappuccino.api.storage import IManager, ITrigger
+from ycappuccino.api.storage import ITrigger
 from ycappuccino.core.component_factory import resolve_class
 from ycappuccino.core.framework import ComponentHandle, Framework
 from ycappuccino.remote._http import DEFAULT_TIMEOUT, REMOTE_SERVER_ITEM_ID, call_peer
 from ycappuccino.remote.capabilities import CAPABILITIES_SERVICE_NAME
+from ycappuccino.remote.peers import IPeers, has_address
 from ycappuccino.remote.remote_proxy import make_generic_proxy
 
 _logger = logging.getLogger(__name__)
@@ -101,15 +102,21 @@ class ComponentDirectory(ITrigger):
 
     def __init__(
         self,
-        manager: IManager,
+        peers: list[IPeers],
+        specifications: str = "",
+        refresh: float = 10.0,
         timeout: float = DEFAULT_TIMEOUT,
         opener: Callable | None = None,
         instantiate: Callable | None = None,
         local_specifications: Callable | None = None,
     ) -> None:
+        # specifications: comma separated qualified paths to proxy, empty for every discovered one;
+        # refresh: seconds between two discoveries, so a peer started later is still found.
         # instantiate/local_specifications are injectable exactly like opener: production
         # defaults to the real Framework, a unit test fakes both without any real Pelix instance.
-        self._manager = manager
+        self._peers = peers
+        self._specifications = {path.strip() for path in specifications.split(",") if path.strip()}
+        self._refresh = refresh
         self._timeout = timeout
         self._opener = opener
         self._instantiate = instantiate if instantiate is not None else _default_instantiate
@@ -119,23 +126,27 @@ class ComponentDirectory(ITrigger):
         self._cache: dict = {}  # qualified_path -> (peer_id, document)
         self._created: set = set()  # qualified_path already given a local proxy
         self._lock = threading.Lock()
+        self._stopped = threading.Event()
 
     async def start(self) -> None:
         # see module docstring: this must not block on instantiate_component() calls made while
         # this very component is still being validated -- background thread, fire-and-forget,
-        # exactly like ComponentActivator.start().
+        # exactly like ComponentActivator.start(). It keeps discovering every `refresh` seconds.
+        self._stopped.clear()
         threading.Thread(target=self._bootstrap, name="ComponentDirectory-bootstrap", daemon=True).start()
 
     def _bootstrap(self) -> None:
         import asyncio
 
-        try:
-            asyncio.run(self._discover_all())
-        except Exception:
-            _logger.exception("ComponentDirectory: initial discovery failed")
+        while not self._stopped.is_set():
+            try:
+                asyncio.run(self._discover_all())
+            except Exception:
+                _logger.exception("ComponentDirectory: discovery failed")
+            self._stopped.wait(self._refresh)
 
     async def stop(self) -> None:
-        pass
+        self._stopped.set()
 
     async def execute(self, action: str, item_id: str, model: Model) -> None:
         # reacting to a RemoteServer upsert is NOT a nested call from this component's own
@@ -150,9 +161,10 @@ class ComponentDirectory(ITrigger):
         return entry[0] if entry else None
 
     async def _discover_all(self) -> None:
-        peers = await self._manager.get_many(REMOTE_SERVER_ITEM_ID, subject=None)
-        for peer in peers:
-            self._discover_peer(peer.get_storage_model())
+        for source in list(self._peers):
+            for document in await source.all():
+                if has_address(document):
+                    self._discover_peer(document)
         self._spawn_missing_proxies()
 
     def _discover_peer(self, document: dict) -> None:
@@ -168,6 +180,8 @@ class ComponentDirectory(ITrigger):
         components = result.body.get("components", []) if isinstance(result.body, dict) else []
         for component in components:
             for qualified_path in component.get("provides", []):
+                if self._specifications and qualified_path not in self._specifications:
+                    continue
                 self._cache.setdefault(qualified_path, (peer_id, document))
 
     def _spawn_missing_proxies(self) -> None:

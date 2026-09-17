@@ -5,7 +5,9 @@ import time
 import unittest
 
 from ycappuccino.remote.models.remote_server import RemoteServer
+from ycappuccino.remote.configured_peers import ConfiguredPeers
 from ycappuccino.remote.peer_authentication import PeerHmacAuthentication
+from ycappuccino.remote.stored_peers import StoredPeers
 
 PEERS = {"peer-a": {"host": "peer.example", "port": 9000, "scheme": "http", "secret": "s3cr3t"}}
 PATH = "/api/services/__remote_dispatch__/pkg.IFoo/bar"
@@ -52,7 +54,7 @@ def _headers(peer_id, secret, method="POST", path=PATH, body=b"", timestamp=None
 class TestPeerHmacAuthentication(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
-        self.auth = PeerHmacAuthentication(FakeManager(PEERS))
+        self.auth = PeerHmacAuthentication([StoredPeers(FakeManager(PEERS))])
 
     async def test_valid_signature_authenticates_as_the_peer(self):
         subject = await self.auth.authenticate(_headers("peer-a", "s3cr3t"), "POST", PATH, b"")
@@ -92,7 +94,7 @@ class TestPeerHmacAuthentication(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.auth.authenticate(_headers("unknown", "irrelevant"), "POST", PATH, b""))
 
     async def test_peer_without_secret_is_not_recognized(self):
-        auth = PeerHmacAuthentication(FakeManager({"peer-a": {**PEERS["peer-a"], "secret": None}}))
+        auth = PeerHmacAuthentication([StoredPeers(FakeManager({"peer-a": {**PEERS["peer-a"], "secret": None}}))])
 
         self.assertIsNone(await auth.authenticate(_headers("peer-a", ""), "POST", PATH, b""))
 
@@ -106,14 +108,14 @@ class TestPeerHmacAuthentication(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await self.auth.authenticate(headers, "POST", "/api/services/other", b""))
 
     async def test_stale_timestamp_is_not_recognized(self):
-        auth = PeerHmacAuthentication(FakeManager(PEERS), now=lambda: 1_000_000.0, tolerance=60.0)
+        auth = PeerHmacAuthentication([StoredPeers(FakeManager(PEERS))], now=lambda: 1_000_000.0, tolerance=60.0)
 
         headers = _headers("peer-a", "s3cr3t", timestamp=str(1_000_000 - 61))
 
         self.assertIsNone(await auth.authenticate(headers, "POST", PATH, b""))
 
     async def test_timestamp_within_tolerance_is_recognized(self):
-        auth = PeerHmacAuthentication(FakeManager(PEERS), now=lambda: 1_000_000.0, tolerance=60.0)
+        auth = PeerHmacAuthentication([StoredPeers(FakeManager(PEERS))], now=lambda: 1_000_000.0, tolerance=60.0)
 
         headers = _headers("peer-a", "s3cr3t", timestamp=str(1_000_000 - 30))
 
@@ -127,6 +129,14 @@ class TestPeerHmacAuthentication(unittest.IsolatedAsyncioTestCase):
         headers = _headers("peer-a", "s3cr3t", subject={"sub": "alice"})
         headers["x-ycappuccino-subject"] = "{not json"
         self.assertIsNone(await self.auth.authenticate(headers, "POST", PATH, b""))
+
+
+    async def test_a_peer_declared_in_the_configuration_is_recognized(self):
+        auth = PeerHmacAuthentication([StoredPeers(FakeManager({})), ConfiguredPeers(peers="frontend", secret="shared")])
+
+        subject = await auth.authenticate(_headers("frontend", "shared", subject={"sub": "alice"}), "POST", PATH, b"")
+
+        self.assertEqual(subject, {"sub": "alice", "peer": "frontend"})
 
 
 if __name__ == "__main__":

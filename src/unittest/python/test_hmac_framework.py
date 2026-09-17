@@ -31,6 +31,7 @@ PEER_APPLICATION = {
           - ycappuccino.http_server
           - ycappuccino.remote.models
           - ycappuccino.remote.peer_authentication
+          - ycappuccino.remote.stored_peers
           - ycappuccino.remote.capabilities
           - PACKAGE
         layers:

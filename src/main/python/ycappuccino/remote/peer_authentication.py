@@ -1,6 +1,6 @@
 """
 PeerHmacAuthentication: recognizes a request signed by another YCappuccino instance with the secret
-of its RemoteServer entry (spec 2026-09-16-transparent-rpc-design.md, sections 4 and 11.2).
+of its peer entry (IPeers: a RemoteServer item or the configuration, spec 2026-09-16-transparent-rpc-design.md, sections 4 and 11.2).
 
 The signed message is `method\npath\ntimestamp\nsubject\n` followed by the raw body, HMAC-SHA256 keyed
 by the peer's secret; `path` excludes the query string, `subject` is the exact X-YCappuccino-Subject
@@ -16,13 +16,12 @@ import time
 from typing import Callable
 
 from ycappuccino.api.http_server import IAuthentication
-from ycappuccino.api.storage import IManager
+from ycappuccino.remote.peers import IPeers
 
 PEER_HEADER = "X-YCappuccino-Peer"
 TIMESTAMP_HEADER = "X-YCappuccino-Timestamp"
 SIGNATURE_HEADER = "X-YCappuccino-Signature"
 SUBJECT_HEADER = "X-YCappuccino-Subject"
-_REMOTE_SERVER_ITEM_ID = "remoteServer"
 
 
 def sign(secret: str, method: str, path: str, timestamp: str, subject_header: str, body: bytes) -> str:
@@ -32,8 +31,8 @@ def sign(secret: str, method: str, path: str, timestamp: str, subject_header: st
 
 class PeerHmacAuthentication(IAuthentication):
 
-    def __init__(self, manager: IManager, now: Callable[[], float] | None = None, tolerance: float = 60.0) -> None:
-        self._manager = manager
+    def __init__(self, peers: list[IPeers], now: Callable[[], float] | None = None, tolerance: float = 60.0) -> None:
+        self._peers = peers
         self._now = now if now is not None else time.time
         self._tolerance = tolerance
 
@@ -55,8 +54,7 @@ class PeerHmacAuthentication(IAuthentication):
         except ValueError:
             return None
 
-        peer = await self._manager.get_one(_REMOTE_SERVER_ITEM_ID, peer_id, subject=None)
-        secret = peer.get_storage_model().get("secret") if peer is not None else None
+        secret = await self._secret_of(peer_id)
         if not secret:
             return None
 
@@ -73,3 +71,10 @@ class PeerHmacAuthentication(IAuthentication):
             if not isinstance(subject, dict):
                 return None
         return {**subject, "peer": peer_id}
+
+    async def _secret_of(self, peer_id: str) -> str | None:
+        for source in list(self._peers):
+            peer = await source.get(peer_id)
+            if peer is not None and peer.get("secret"):
+                return peer["secret"]
+        return None
