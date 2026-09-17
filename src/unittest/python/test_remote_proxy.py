@@ -5,6 +5,7 @@ call_peer by test_remote_call.py; not duplicated here.
 """
 
 import abc
+import dataclasses
 import json
 import unittest
 
@@ -17,6 +18,19 @@ class IInventoryService(YCappuccinoComponent, abc.ABC):
     @abc.abstractmethod
     async def check_stock(self, sku: str, warehouse: str = "main") -> int:
         """units of `sku` available at `warehouse`"""
+
+
+@dataclasses.dataclass
+class Receipt:
+    event: str
+    count: int
+
+
+class IReceiptService(YCappuccinoComponent, abc.ABC):
+
+    @abc.abstractmethod
+    async def last(self) -> Receipt:
+        """the last receipt"""
 
 
 class IAuditedService(YCappuccinoComponent, abc.ABC):
@@ -91,6 +105,12 @@ class TestMakeGenericProxy(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(request.data), {"kwargs": {"event": "login"}})
         self.assertEqual(json.loads(headers["x-ycappuccino-subject"]), {"sub": "alice", "tid": "acme"})
         self.assertIn("x-ycappuccino-signature", headers)
+
+    async def test_a_dataclass_return_type_is_rebuilt_from_its_json_object(self):
+        opener = FakeOpener({"status": 200, "meta": {}, "data": {"result": {"event": "login", "count": 2}}})
+        proxy = make_generic_proxy(IReceiptService, "somewhere.IReceiptService")(opener=opener)
+
+        self.assertEqual(await proxy.last(), Receipt("login", 2))
 
     async def test_the_proxy_class_is_a_concrete_subclass_of_the_interface(self):
         proxy_class = make_generic_proxy(IInventoryService, "somewhere.IInventoryService")

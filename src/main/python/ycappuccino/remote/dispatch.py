@@ -13,7 +13,8 @@ Wire shape:
 
 <qualified path> is the "module.ClassName" of the specification, as Framework.list_components() /
 RemoteCapabilities report it; the target is the local Pelix service providing that specification's
-short name. Arguments and results are JSON only. Lifecycle (start/stop), binding (bind/un_bind) and
+short name. Arguments and results are JSON only; a dataclass result travels as its JSON object (a
+proxy rebuilds it from the method's return annotation). Lifecycle (start/stop), binding (bind/un_bind) and
 private ("_") methods are never dispatchable.
 
 Access (spec 2026-09-16-transparent-rpc-design.md, section 11.3) depends on the subject http_server
@@ -30,6 +31,7 @@ one; a subject put in the payload is ignored. The service itself stays secure=Fa
 browser must be able to reach a public method such as login.
 """
 
+import dataclasses
 import inspect
 import logging
 from typing import Any, Callable
@@ -162,4 +164,6 @@ class RemoteDispatch(IExposedService):
         result = target(*args, **kwargs)
         if inspect.isawaitable(result):
             result = await result
+        if dataclasses.is_dataclass(result) and not isinstance(result, type):
+            result = dataclasses.asdict(result)
         return ServiceResult(body={"result": result})

@@ -4,6 +4,7 @@ no real Framework, no socket. See dispatch.py's module docstring for the wire sh
 levels (spec 2026-09-16-transparent-rpc-design.md, section 11.3).
 """
 
+import dataclasses
 import unittest
 
 from remote_fixtures import FakeAuthorization
@@ -17,7 +18,16 @@ PEER = {"peer": "backend-1"}
 ALICE = {"sub": "alice", "tid": "acme"}
 
 
+@dataclasses.dataclass
+class Stock:
+    sku: str
+    units: int
+
+
 class IInventoryService:
+
+    async def describe(self, sku) -> Stock:
+        """internal only, returns a dataclass"""
 
     async def check_stock(self, sku, warehouse="main"):
         """internal only"""
@@ -41,6 +51,9 @@ class FakeService(IInventoryService):
     async def check_stock(self, sku, warehouse="main"):
         self.calls.append((sku, warehouse))
         return len(sku) * 2
+
+    async def describe(self, sku) -> Stock:
+        return Stock(sku, len(sku))
 
     async def whoami(self, subject=None):
         self.calls.append(subject)
@@ -162,6 +175,11 @@ class TestRemoteDispatch(unittest.IsolatedAsyncioTestCase):
         result = await self.call("whoami", {"kwargs": {"subject": {"sub": "spoofed"}}}, ALICE)
 
         self.assertEqual(result.body, {"result": ALICE})
+
+    async def test_a_dataclass_result_travels_as_a_json_object(self):
+        result = await self.call("describe", {"kwargs": {"sku": "abc"}}, PEER)
+
+        self.assertEqual(result.body, {"result": {"sku": "abc", "units": 3}})
 
     # --- structural refusals ---
 

@@ -24,7 +24,9 @@ takes *args/**kwargs, or whose default values are not JSON-serializable, or whos
 either, is an accepted, out-of-scope limitation -- not handled here.
 """
 
+import dataclasses
 import inspect
+import typing
 from typing import Any, Callable
 
 from ycappuccino.remote._http import DEFAULT_TIMEOUT, call_peer
@@ -51,9 +53,12 @@ def make_generic_proxy(interface: type, qualified_path: str) -> type:
         "_ycappuccino_qualified_path": qualified_path,
         "__init__": _build_init(),
     }
+    return_types = {}
     for name in method_names:
-        signature = inspect.signature(getattr(interface, name))
-        namespace[name] = _build_method(name, signature)
+        method = getattr(interface, name)
+        namespace[name] = _build_method(name, inspect.signature(method))
+        return_types[name] = _dataclass_return_type(method)
+    namespace["_ycappuccino_return_types"] = return_types
 
     class_name = "Remote" + (interface.__name__[1:] if interface.__name__.startswith("I") else interface.__name__)
     klass = type(class_name, (_GenericRemoteProxyBase, interface), namespace)
@@ -69,6 +74,14 @@ def _abstract_business_methods(interface: type) -> list:
         for name, member in inspect.getmembers(interface)
         if getattr(member, "__isabstractmethod__", False) and name not in ("start", "stop")
     )
+
+
+def _dataclass_return_type(method: Callable) -> type | None:
+    try:
+        return_type = typing.get_type_hints(method).get("return")
+    except Exception:
+        return None
+    return return_type if isinstance(return_type, type) and dataclasses.is_dataclass(return_type) else None
 
 
 def _build_init() -> Callable:
@@ -122,6 +135,7 @@ class _GenericRemoteProxyBase:
     and _dispatch() (the actual RPC call). Never used on its own."""
 
     _ycappuccino_qualified_path = ""
+    _ycappuccino_return_types: dict = {}
 
     async def start(self) -> None:
         pass
@@ -145,4 +159,8 @@ class _GenericRemoteProxyBase:
             {}, {"kwargs": kwargs},
             timeout=self._timeout, opener=self._opener, subject=subject,
         )
-        return result.body.get("result") if isinstance(result.body, dict) else result.body
+        value = result.body.get("result") if isinstance(result.body, dict) else result.body
+        return_type = self._ycappuccino_return_types.get(method_name)
+        if return_type is not None and isinstance(value, dict):
+            return return_type(**value)
+        return value
