@@ -15,7 +15,17 @@ framework instance needs a discovery mechanism for the others.
 
 Decomposed into 3 sub-projects (per user's original request):
 1. **Interface description model** — this document. Enrich `remote` with a typed, persisted service catalog.
-2. **UI shell hosted by `hosts`** — not started. Depends on (1)'s public typed catalog (consumed via `swagger`-style schema) being far enough along.
+2. **Screen-description library, multi-backend** — not started. Reframed 2026-09-16 (user clarification,
+   two passes): not a web-only UI shell — a **core Python library** describing a screen once
+   (declaratively, backend-agnostic), plus **one adapter per target** rendering that description: a web
+   adapter (HTML5/CSS, in `hosts`), a Qt adapter (desktop), a shell adapter (terminal). Ports-and-adapters
+   shape: the core lib owns the screen model, each adapter is a separate, independently swappable renderer
+   — matches the framework's existing style of small composable packages (one `uv`/`pyproject.toml` repo
+   per concern), so likely lands as a new core repo + one repo per adapter, not one monolithic package. Likely shares its typed-introspection mechanism with
+   (1)'s `ServiceDescriptor`/`@rpc_method` catalog (same `inspect.signature`/`typing.get_type_hints`
+   technique) — a screen's fields/actions plausibly derive from the same typed method signatures already
+   decided for the public RPC layer. Needs its own brainstorming pass before design; not started. Depends
+   on (1) being far enough along (typed catalog + swagger schema).
 3. **`permissions_app` UI** (login, user mgmt, permission mgmt) as the first app on top of (1)+(2) — not started. Backend (`authentication.py`, `authorization.py`, `services/login.py`, `services/change_password.py`) already exists in `permissions_app`; this sub-project is UI + catalog wiring.
 
 This document covers sub-project 1 only.
