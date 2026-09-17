@@ -269,8 +269,7 @@ fournirait un second `IServiceEndpoint` en conflit avec `endpoints_service.Servi
 - `permissions_app` : écrans partagés (`ycappuccino.permissions.screens`), connexion par `ILoginService` dans
   les deux consoles, `PermissionsWebApp` vérifiée dans Chromium face à un vrai backend (connexion, erreurs,
   organisation, création d'utilisateur puis connexion de cet utilisateur, déconnexion).
-- Non vérifiés : Firefox/Safari, service de la page et des wheels par `hosts`. La console terminal ne
-  pré-remplit pas encore l'id du compte à l'attribution du rôle.
+- Non vérifiés : Firefox/Safari, service de la page et des wheels par `hosts`.
 
 ## Hors périmètre (ce document)
 
