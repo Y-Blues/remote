@@ -132,11 +132,16 @@ avant leur premier push).
 - `ui/README.md` mis à jour : la mention "à venir : ycappuccino-ui-web" pointe maintenant vers le dépôt
   réel.
 
+## Décidé, partie 4 (2026-09-17, avancement) : options du `<select>` livrées
+
+`render_screen` ajoute maintenant un `<option>` (texte et `value` = le choix) par `Field.choices`
+quand un `<select>` est créé — TDD, 2 tests réels (`FakeDom` prouve l'arbre d'options, un test de
+soumission prouve que la valeur sélectionnée traverse `perform_action` inchangée), 13/13 tests verts.
+Fermé dans « Ouvert » ci-dessous.
+
 ## Ouvert — reste à trancher
 
 - **Adapter Qt** (`ycappuccino-ui-qt`, PySide6, décidé) : même modèle, pas commencé.
-- **`<option>` d'un champ `choice`** dans `ui_web` : le `<select>` existe, ses options non — prochaine
-  étape évidente de `ui_web`, pas encore un test rouge écrit pour elle.
 - **Bootstrap navigateur de `ui_web`** : pas de `static/index.html` propre à ce dépôt — reste à composer
   avec la séquence de `client/static/main.py` (charger Pyodide/iPOPO/api/core/client, puis `ui`/`ui_web`,
   puis appeler `render_screen` et attacher `mount` au vrai `document.body`) — non fait, non vérifié.
@@ -147,10 +152,9 @@ avant leur premier push).
 
 ## Prochaines étapes
 
-1. Options du `<select>` pour `Field.type == "choice"` dans `ui_web` (TDD, `FakeDom` suffit).
-2. Bootstrap navigateur réel de `ui_web` (composé avec `client/static/main.py`), puis vérification
+1. Bootstrap navigateur réel de `ui_web` (composé avec `client/static/main.py`), puis vérification
    manuelle en navigateur (seule façon de lever les incertitudes listées dans `ui_web/README.md`).
-3. Adapter Qt (PySide6) — pas encore commencé, pas urgent tant que l'adapter web n'est pas vérifié.
-4. Une fois un adapter vérifié en conditions réelles (ou l'adapter Qt livré), produire le design figé
+2. Adapter Qt (PySide6) — pas encore commencé, pas urgent tant que l'adapter web n'est pas vérifié.
+3. Une fois un adapter vérifié en conditions réelles (ou l'adapter Qt livré), produire le design figé
    (`docs/.../specs/YYYY-MM-DD-ui-screen-library-design.md`) — ce checkpoint reste un brainstorming avancé,
    pas une spec figée.
