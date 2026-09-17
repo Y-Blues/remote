@@ -39,6 +39,7 @@ from typing import Any, Callable
 from ycappuccino.api.decorators import get_rpc_methods
 from ycappuccino.api.endpoints_service import CALL, IExposedService, ServiceResult
 from ycappuccino.api.endpoints_storage import Forbidden, IAuthorization, InvalidRequest, NotAuthenticated, NotFound
+from ycappuccino.api.proxy import Proxy
 from ycappuccino.core.component_factory import resolve_class
 from ycappuccino.core.framework import Framework
 
@@ -151,6 +152,10 @@ class RemoteDispatch(IExposedService):
     async def _invoke(
         self, service: Any, qualified_path: str, method_name: str, body: Any, subject: dict | None
     ) -> ServiceResult:
+        if isinstance(service, Proxy):
+            # the registered service is iPOPO's proxy: call the component itself, whose signature says
+            # whether it takes a subject
+            service = object.__getattribute__(service, "_obj")
         target = getattr(service, method_name, None)
         if target is None or not callable(target):
             raise NotFound(f"{qualified_path!r} has no callable method {method_name!r}")

@@ -5,18 +5,13 @@ __remote_dispatch__ (dispatch.py) on a peer, as a generic (method name, kwargs) 
 component_directory.ComponentDirectory to create, on the fly, a local stand-in for a specification
 discovered on a peer but not available locally -- see the design doc, addendum part C.
 
-Kin to (but independent of, and NOT importing) ycappuccino.client.remote_proxy.make_remote: both
-forge a real, introspectable __init__ and business methods via exec() (spec §9.2's technique --
-dataclasses/attrs/namedtuple do the same), so core's real DI (describe_component, which reads
-inspect.signature by name and typing.get_type_hints by annotation) can wire them exactly like a
-hand-written component. That is where the similarity ends: client's make_remote infers an HTTP
-verb/path from each method's own NAME, because it targets a small, KNOWN set of interfaces
-(ICrud/IDrafts/IItemCatalog/IServiceEndpoint) whose REST shape at /api/crud, /api/drafts, etc. is
-fixed and already understood (see client's spec §9). remote targets interfaces it has NEVER seen
-before (an application's own IInventoryService, say) with NO such wire convention to lean on -- so
-there is nothing to infer a route from. Every call is therefore a raw, uninterpreted RPC: the
-method's own parameter names/values become a JSON "kwargs" dict, POSTed whole to the single generic
-__remote_dispatch__ endpoint (never a REST-shaped route), see dispatch.py for the receiving side.
+Same technique as ycappuccino.client.rpc_proxy.make_rpc_proxy (the browser's proxies), duplicated on
+purpose since neither repo depends on the other: a real __init__ and real method signatures are forged
+with exec, so core's describe_component introspects them like hand-written code. Every call is a
+JSON-RPC call -- the method's own parameters become a "kwargs" object POSTed to __remote_dispatch__
+(dispatch.py, the receiving side). Here the proxy targets a peer (host/port/secret), signs its calls,
+and forwards the `subject` it is given; the browser's proxy targets its own backend with the user's
+token and never sends a subject.
 
 Supported argument/return shapes: JSON-serializable only (str/int/float/bool/None/list/dict), same
 constraint as dispatch.py's own docstring documents on the receiving side. A method whose signature

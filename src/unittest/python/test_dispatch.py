@@ -181,6 +181,18 @@ class TestRemoteDispatch(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.body, {"result": {"sku": "abc", "units": 3}})
 
+    async def test_the_real_component_behind_an_ipopo_proxy_is_called(self):
+        # the framework registers a Proxy wrapping the component: dispatch must see the real signature
+        from ycappuccino.api.proxy import Proxy
+
+        proxy = Proxy()
+        proxy._obj = self.service
+        dispatch = RemoteDispatch(resolve=_resolve, locate_service=lambda spec: (proxy, spec))
+
+        result = await dispatch.call("POST", [QUALIFIED_PATH, "whoami"], {}, {}, ALICE)
+
+        self.assertEqual(result.body, {"result": ALICE})
+
     # --- structural refusals ---
 
     async def test_missing_extra_path_is_invalid(self):
