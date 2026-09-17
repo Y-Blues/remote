@@ -52,6 +52,7 @@ this addendum, considerably more consequential after it.
 
 import inspect
 import logging
+from typing import Any, Callable
 
 from ycappuccino.api.endpoints_service import IExposedService, ServiceResult
 from ycappuccino.api.endpoints_storage import InvalidRequest, NotFound
@@ -67,7 +68,7 @@ DISPATCH_SERVICE_NAME = "__remote_dispatch__"
 _NEVER_DISPATCHABLE = {"start", "stop"}
 
 
-def _default_locate_service(specification_name: str):
+def _default_locate_service(specification_name: str) -> tuple:
     """(service, reference) for the local Pelix service currently providing this short
     specification name, or (None, None) if there is none -- the framework must be started."""
     context = Framework.get_framework().context
@@ -79,7 +80,7 @@ def _default_locate_service(specification_name: str):
     return context.get_service(reference), reference
 
 
-def _default_release_service(reference) -> None:
+def _default_release_service(reference: Any) -> None:
     if reference is None:
         return
     context = Framework.get_framework().context
@@ -91,7 +92,12 @@ class RemoteDispatch(IExposedService):
     name = DISPATCH_SERVICE_NAME
     secure = False
 
-    def __init__(self, resolve=None, locate_service=None, release_service=None):
+    def __init__(
+        self,
+        resolve: Callable | None = None,
+        locate_service: Callable | None = None,
+        release_service: Callable | None = None,
+    ) -> None:
         # resolve/locate_service/release_service are injectable exactly like RemoteCall's/
         # ServiceDirectory's "opener": production defaults to the real resolve_class/Pelix
         # context, but a unit test can fake all three without a running Framework or any socket.
@@ -99,13 +105,15 @@ class RemoteDispatch(IExposedService):
         self._locate_service = locate_service if locate_service is not None else _default_locate_service
         self._release_service = release_service if release_service is not None else _default_release_service
 
-    async def start(self):
+    async def start(self) -> None:
         pass
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
-    async def call(self, method, extra_path, params, body, subject):
+    async def call(
+        self, method: str, extra_path: list, params: dict, body: Any, subject: dict | None
+    ) -> ServiceResult:
         if len(extra_path) != 2:
             raise InvalidRequest(f"{DISPATCH_SERVICE_NAME} expects /<qualified path>/<method name>")
         qualified_path, method_name = extra_path
@@ -124,7 +132,7 @@ class RemoteDispatch(IExposedService):
         finally:
             self._release_service(reference)
 
-    async def _invoke(self, service, qualified_path, method_name, body):
+    async def _invoke(self, service: Any, qualified_path: str, method_name: str, body: Any) -> ServiceResult:
         if method_name in _NEVER_DISPATCHABLE or method_name.startswith("_"):
             raise NotFound(f"{qualified_path!r} has no callable method {method_name!r}")
         target = getattr(service, method_name, None)

@@ -30,6 +30,8 @@ module docstring for the full security discussion (arbitrary method invocation o
 specification, not just deliberately exposed IExposedServices).
 """
 
+from typing import Any
+
 from ycappuccino.api.endpoints_service import IExposedService, ServiceResult
 from ycappuccino.core.framework import Framework
 
@@ -40,16 +42,18 @@ class RemoteCapabilities(IExposedService):
     name = CAPABILITIES_SERVICE_NAME
     secure = False
 
-    def __init__(self, services: list[IExposedService]):
+    def __init__(self, services: list[IExposedService]) -> None:
         self._services = services
 
-    async def start(self):
+    async def start(self) -> None:
         pass
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
-    async def call(self, method, extra_path, params, body, subject):
+    async def call(
+        self, method: str, extra_path: list, params: dict, body: Any, subject: dict | None
+    ) -> ServiceResult:
         result = {"services": [service.name for service in list(self._services) if service.name]}
         components = Framework.get_framework().list_components()
         if components:

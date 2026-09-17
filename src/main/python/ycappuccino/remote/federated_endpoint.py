@@ -27,8 +27,9 @@ never alongside it. See README.md.
 """
 
 import logging
+from typing import Any, Callable
 
-from ycappuccino.api.endpoints_service import CALL, IExposedService, IServiceEndpoint
+from ycappuccino.api.endpoints_service import CALL, IExposedService, IServiceEndpoint, ServiceResult
 from ycappuccino.api.endpoints_storage import Forbidden, IAuthorization, NotAuthenticated, NotFound
 from ycappuccino.api.storage import IManager
 from ycappuccino.remote._http import DEFAULT_TIMEOUT, REMOTE_SERVER_ITEM_ID, call_peer
@@ -46,8 +47,8 @@ class FederatedServiceEndpoint(IServiceEndpoint):
         directory: ServiceDirectory,
         manager: IManager,
         timeout: float = DEFAULT_TIMEOUT,
-        opener=None,
-    ):
+        opener: Callable | None = None,
+    ) -> None:
         self._services = services
         self._authorizations = authorizations
         self._directory = directory
@@ -55,13 +56,15 @@ class FederatedServiceEndpoint(IServiceEndpoint):
         self._timeout = timeout
         self._opener = opener
 
-    async def start(self):
+    async def start(self) -> None:
         pass
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
-    async def call(self, name, method, extra_path, params, body, subject):
+    async def call(
+        self, name: str, method: str, extra_path: list, params: dict, body: Any, subject: dict | None
+    ) -> ServiceResult:
         service = self._find_local(name)
         if service is not None:
             await self._check(service, subject)
@@ -69,13 +72,13 @@ class FederatedServiceEndpoint(IServiceEndpoint):
 
         return await self._call_remote(name, method, extra_path, params, body)
 
-    def _find_local(self, name):
+    def _find_local(self, name: str) -> IExposedService | None:
         for service in list(self._services):
             if service.name == name:
                 return service
         return None
 
-    async def _check(self, service, subject):
+    async def _check(self, service: IExposedService, subject: dict | None) -> None:
         if not service.secure:
             return
         if subject is None:
@@ -87,7 +90,9 @@ class FederatedServiceEndpoint(IServiceEndpoint):
         if not await authorizations[0].is_authorized(subject, CALL, service.name):
             raise Forbidden(f"call {service.name} is not authorized")
 
-    async def _call_remote(self, name, method, extra_path, params, body):
+    async def _call_remote(
+        self, name: str, method: str, extra_path: list, params: dict, body: Any
+    ) -> ServiceResult:
         peer_id = await self._directory.locate(name)
         if peer_id is None:
             raise NotFound(f"unknown service {name}")

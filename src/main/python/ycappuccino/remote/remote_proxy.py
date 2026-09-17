@@ -25,6 +25,7 @@ either, is an accepted, out-of-scope limitation -- not handled here.
 """
 
 import inspect
+from typing import Any, Callable
 
 from ycappuccino.remote._http import DEFAULT_TIMEOUT, call_peer
 from ycappuccino.remote.dispatch import DISPATCH_SERVICE_NAME
@@ -70,7 +71,7 @@ def _abstract_business_methods(interface: type) -> list:
     )
 
 
-def _build_init():
+def _build_init() -> Callable:
     """forges a REAL, introspectable __init__ (real parameter names/annotations, not a **kwargs
     sink) via exec, so describe_component's constructor introspection (inspect.signature by name)
     treats peer_host/peer_port/peer_scheme/timeout/opener as ordinary component properties --
@@ -90,7 +91,7 @@ def _build_init():
     return namespace["__init__"]
 
 
-def _build_method(name: str, signature: inspect.Signature):
+def _build_method(name: str, signature: inspect.Signature) -> Callable:
     """forges a method with the SAME calling convention as the interface's own abstract method
     (same parameter names/defaults, so callers positionally/by-keyword exactly as they would a
     hand-written component), whose body only ever calls self._dispatch(name, {param: value})"""
@@ -121,13 +122,13 @@ class _GenericRemoteProxyBase:
 
     _ycappuccino_qualified_path = ""
 
-    async def start(self):
+    async def start(self) -> None:
         pass
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
-    async def _dispatch(self, method_name: str, kwargs: dict):
+    async def _dispatch(self, method_name: str, kwargs: dict) -> Any:
         kwargs = dict(kwargs)
         kwargs.pop("subject", None)  # never forwarded, see spec section 3 / dispatch.py
 

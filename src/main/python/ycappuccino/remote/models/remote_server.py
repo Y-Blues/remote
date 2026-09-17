@@ -15,20 +15,20 @@ from ycappuccino.core.decorator_app import App
 )
 class RemoteServer(Model):
 
-    def __init__(self, a_dict=None):
+    def __init__(self, a_dict: dict | None = None) -> None:
         super().__init__(a_dict)
         self._host = None
         self._port = None
         self._scheme = None
 
     @Property(name="host")
-    def host(self, a_value):
+    def host(self, a_value: str) -> None:
         self._host = a_value
 
     @Property(name="port", type="integer", minimum=1, maximum=65535)
-    def port(self, a_value):
+    def port(self, a_value: int) -> None:
         self._port = a_value
 
     @Property(name="scheme")
-    def scheme(self, a_value):
+    def scheme(self, a_value: str) -> None:
         self._scheme = a_value

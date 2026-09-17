@@ -12,6 +12,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Any, Callable
 
 from ycappuccino.api.endpoints_service import ServiceResult
 from ycappuccino.api.endpoints_storage import Forbidden, InvalidRequest, NotAuthenticated, NotFound
@@ -21,7 +22,7 @@ DEFAULT_TIMEOUT = 5.0
 _HOP_BY_HOP_HEADERS = {"content-length", "content-type", "connection", "transfer-encoding", "date", "server"}
 
 
-def build_url(document, service, extra_path=(), params=None):
+def build_url(document: dict, service: str, extra_path: tuple = (), params: dict | None = None) -> str:
     url = f"{document['scheme']}://{document['host']}:{document['port']}/api/services/{service}"
     if extra_path:
         url += "/" + "/".join(extra_path)
@@ -30,7 +31,16 @@ def build_url(document, service, extra_path=(), params=None):
     return url
 
 
-def call_peer(document, service, method, extra_path, params, body, timeout=DEFAULT_TIMEOUT, opener=None):
+def call_peer(
+    document: dict,
+    service: str,
+    method: str,
+    extra_path: tuple,
+    params: dict | None,
+    body: Any,
+    timeout: float = DEFAULT_TIMEOUT,
+    opener: Callable | None = None,
+) -> ServiceResult:
     """
     Forward one call to `service` on the peer described by `document` (a RemoteServer storage model:
     host/port/scheme), over HTTP, translating its {"status","meta","data"} envelope into a
@@ -56,7 +66,7 @@ def call_peer(document, service, method, extra_path, params, body, timeout=DEFAU
         return _translate(response.status, json.loads(response.read()), response.headers)
 
 
-def _translate(status, payload, headers):
+def _translate(status: int, payload: dict, headers: Any) -> ServiceResult:
     data = payload.get("data")
     message = data.get("error", "remote call failed") if isinstance(data, dict) else "remote call failed"
     if status == 401:
@@ -72,7 +82,7 @@ def _translate(status, payload, headers):
     return ServiceResult(body=data, headers=_forward_headers(headers))
 
 
-def _forward_headers(headers):
+def _forward_headers(headers: Any) -> dict:
     if not headers:
         return {}
     items = headers.items() if hasattr(headers, "items") else headers

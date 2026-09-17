@@ -27,7 +27,7 @@ the same service name on two peers queried by the same instance.
 """
 
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 from ycappuccino.api.storage import IManager
 from ycappuccino.api.core_base import YCappuccinoComponent
@@ -39,16 +39,16 @@ _logger = logging.getLogger(__name__)
 
 class ServiceDirectory(YCappuccinoComponent):
 
-    def __init__(self, manager: IManager, timeout: float = DEFAULT_TIMEOUT, opener=None):
+    def __init__(self, manager: IManager, timeout: float = DEFAULT_TIMEOUT, opener: Callable | None = None) -> None:
         self._manager = manager
         self._timeout = timeout
         self._opener = opener
         self._cache: dict[str, str] = {}
 
-    async def start(self):
+    async def start(self) -> None:
         await self._discover_all()
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
     async def locate(self, service_name: str) -> Optional[str]:
@@ -57,12 +57,12 @@ class ServiceDirectory(YCappuccinoComponent):
         await self._discover_all()
         return self._cache.get(service_name)
 
-    async def _discover_all(self):
+    async def _discover_all(self) -> None:
         peers = await self._manager.get_many(REMOTE_SERVER_ITEM_ID, subject=None)
         for peer in peers:
             self._discover_peer(peer.get_storage_model())
 
-    def _discover_peer(self, document):
+    def _discover_peer(self, document: dict) -> None:
         peer_id = document.get("_id")
         try:
             result = call_peer(

@@ -65,11 +65,12 @@ specification -- option (a) -- which this addendum does not build a generic orch
 import inspect
 import logging
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
+from ycappuccino.api.models import Model
 from ycappuccino.api.storage import IManager, ITrigger
 from ycappuccino.core.component_factory import resolve_class
-from ycappuccino.core.framework import Framework
+from ycappuccino.core.framework import ComponentHandle, Framework
 from ycappuccino.remote._http import DEFAULT_TIMEOUT, REMOTE_SERVER_ITEM_ID, call_peer
 from ycappuccino.remote.capabilities import CAPABILITIES_SERVICE_NAME
 from ycappuccino.remote.remote_proxy import make_generic_proxy
@@ -81,7 +82,7 @@ _logger = logging.getLogger(__name__)
 _PELIX_HTTP_SERVLET_MARKER = "pelix.http.servlet"
 
 
-def _default_instantiate(component, properties):
+def _default_instantiate(component: type, properties: dict) -> ComponentHandle:
     return Framework.get_framework().instantiate_component(component, properties)
 
 
@@ -102,10 +103,10 @@ class ComponentDirectory(ITrigger):
         self,
         manager: IManager,
         timeout: float = DEFAULT_TIMEOUT,
-        opener=None,
-        instantiate=None,
-        local_specifications=None,
-    ):
+        opener: Callable | None = None,
+        instantiate: Callable | None = None,
+        local_specifications: Callable | None = None,
+    ) -> None:
         # instantiate/local_specifications are injectable exactly like opener: production
         # defaults to the real Framework, a unit test fakes both without any real Pelix instance.
         self._manager = manager
@@ -119,13 +120,13 @@ class ComponentDirectory(ITrigger):
         self._created: set = set()  # qualified_path already given a local proxy
         self._lock = threading.Lock()
 
-    async def start(self):
+    async def start(self) -> None:
         # see module docstring: this must not block on instantiate_component() calls made while
         # this very component is still being validated -- background thread, fire-and-forget,
         # exactly like ComponentActivator.start().
         threading.Thread(target=self._bootstrap, name="ComponentDirectory-bootstrap", daemon=True).start()
 
-    def _bootstrap(self):
+    def _bootstrap(self) -> None:
         import asyncio
 
         try:
@@ -133,10 +134,10 @@ class ComponentDirectory(ITrigger):
         except Exception:
             _logger.exception("ComponentDirectory: initial discovery failed")
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
-    async def execute(self, action: str, item_id: str, model) -> None:
+    async def execute(self, action: str, item_id: str, model: Model) -> None:
         # reacting to a RemoteServer upsert is NOT a nested call from this component's own
         # start()/stop() -- core's README says plainly this case is safe, see module docstring.
         await self._discover_all()
@@ -148,13 +149,13 @@ class ComponentDirectory(ITrigger):
         entry = self._cache.get(qualified_path)
         return entry[0] if entry else None
 
-    async def _discover_all(self):
+    async def _discover_all(self) -> None:
         peers = await self._manager.get_many(REMOTE_SERVER_ITEM_ID, subject=None)
         for peer in peers:
             self._discover_peer(peer.get_storage_model())
         self._spawn_missing_proxies()
 
-    def _discover_peer(self, document):
+    def _discover_peer(self, document: dict) -> None:
         peer_id = document.get("_id")
         try:
             result = call_peer(
@@ -169,7 +170,7 @@ class ComponentDirectory(ITrigger):
             for qualified_path in component.get("provides", []):
                 self._cache.setdefault(qualified_path, (peer_id, document))
 
-    def _spawn_missing_proxies(self):
+    def _spawn_missing_proxies(self) -> None:
         local = self._local_specifications()
         with self._lock:
             pending = [
@@ -181,7 +182,7 @@ class ComponentDirectory(ITrigger):
         for qualified_path, peer_id, document in pending:
             self._spawn_proxy(qualified_path, peer_id, document)
 
-    def _spawn_proxy(self, qualified_path, peer_id, document):
+    def _spawn_proxy(self, qualified_path: str, peer_id: str, document: dict) -> None:
         if qualified_path == _PELIX_HTTP_SERVLET_MARKER:
             # core's own documented, permanent exception (see component_factory.py's
             # ComponentDescription.provides_qualified docstring): this is a Pelix marker string,
