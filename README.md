@@ -183,8 +183,8 @@ server.scheme("http")
 await manager.up_sert_model(server, subject=None)
 ```
 
-Le conteneur B, lui, expose `service_b` (`secure=False`, transmission d'authentification non
-supportée, voir « Authentification » ci-dessus) et charge lui aussi `ycappuccino.remote` (jamais
+Le conteneur B, lui, expose `service_b` (`secure=True` possible si A et B partagent un `secret`, voir
+« Authentification » ci-dessus) et charge lui aussi `ycappuccino.remote` (jamais
 `ycappuccino.endpoints_service` en même temps) pour publier `__remote_capabilities__` et dispatcher
 ses propres appels HTTP via `FederatedServiceEndpoint` :
 
@@ -216,10 +216,10 @@ et sans ambiguïté : un mécanisme **totalement générique**, aucune liste d'i
 
 **Mise en place** : `ycappuccino.remote` publie automatiquement, en plus de `__remote_capabilities__`
 (section précédente), une clé `"components"` dans sa réponse — la liste `Framework.list_components()`
-de l'instance — et un nouveau service réservé `__remote_dispatch__` (`secure=False`, même raison
-structurelle que `__remote_capabilities__`) capable d'appeler n'importe quelle méthode de n'importe
-quelle spécification publiée localement. Aucune configuration supplémentaire : charger
-`ycappuccino.remote` suffit, exactement comme pour `RemoteCapabilities`/`ServiceDirectory`.
+de l'instance — et un nouveau service réservé `__remote_dispatch__` capable d'appeler n'importe quelle méthode de
+n'importe quelle spécification publiée localement, pour un pair authentifié (voir « Sécurité » plus bas).
+Les deux instances doivent partager un `secret` : sans lui, l'appel est anonyme et une interface interne
+n'est pas atteignable.
 
 Un composant natif dépendant de `IInventoryService`, définie et implémentée **seulement** sur un
 pair, obtient un proxy créé à la volée (résolu depuis le pair, synthétisé par réflexion,
@@ -265,16 +265,30 @@ toujours « disponible » (vide au pire) et se peuple automatiquement (`bind()` 
 proxy apparaît — c'est le mécanisme que `test_component_directory_framework.py` prouve de bout en
 bout, avec deux processus réels.
 
-### Sécurité : un élargissement réel
+### Sécurité : deux niveaux d'accès
 
-**`__remote_dispatch__` rend n'importe quelle méthode de n'importe quelle spécification publiée
-localement appelable par le réseau** — pas seulement les `IExposedService` délibérément publiés sous
-un nom choisi (comme avant cet addendum). `IManager`, `ITrigger`, `IAuthorization`, une interface
-interne applicative jamais pensée pour le réseau : tout devient atteignable, sans authentification
-(même raison que partout ailleurs dans `remote` : aucun sujet n'est jamais transmis à un pair). C'est
-la conséquence directe et acceptée du choix de l'utilisateur pour un mécanisme totalement générique —
-voir la conception (addendum, partie 2, section C) pour la discussion complète. **Ne jamais exposer
-une instance chargeant `ycappuccino.remote` en dehors d'un réseau interne de confiance.**
+`__remote_dispatch__` décide selon le sujet que `http_server` a authentifié pour la requête (conception,
+section 11.3) :
+
+| Appelant | Méthodes appelables |
+|---|---|
+| pair signé (`PeerHmacAuthentication`, sujet avec `"peer"`) | toute méthode, sauf `start`/`stop`/`bind`/`un_bind`/`_privée` |
+| utilisateur (JWT) ou anonyme, par exemple un navigateur `ycappuccino-client` | seulement les méthodes `@rpc_method` de l'interface |
+
+Une méthode `@rpc_method` sécurisée (par défaut) exige un sujet autorisé par la première
+`IAuthorization` à l'action `call` sur `<chemin qualifié>.<méthode>` (une `RolePermission`
+`call:ycappuccino.api.permissions.ILoginService.*`, par exemple) ; `@rpc_method(secure=False)` laisse la
+méthode contrôler elle-même (`Crud` via `Access`, `ServiceEndpoint` via le `secure` de chaque service,
+`ILoginService.login`). La méthode cible reçoit le sujet authentifié dans son paramètre `subject` si elle
+en déclare un ; un `subject` dans la charge utile est ignoré.
+
+`__remote_capabilities__` suit la même règle : un pair voit tous les composants, les autres seulement les
+interfaces qui ont au moins une méthode `@rpc_method`.
+
+Un backend qui sert des navigateurs sans utiliser `FederatedServiceEndpoint` liste les modules plutôt que
+le paquet dans `bundle_prefix` : `ycappuccino.remote.dispatch`, `ycappuccino.remote.capabilities`,
+`ycappuccino.remote.models`, `ycappuccino.remote.peer_authentication` (le paquet entier fournirait un
+second `IServiceEndpoint`, en conflit avec `endpoints_service`).
 
 ### Limites acceptées
 

@@ -27,6 +27,9 @@ of: resolve_class() only works if the module is importable wherever it runs, an 
 of a fully generic, zero-hardcoded-interface-list mechanism (see design doc addendum part C) -- in
 this test, sharing container B's own temp app root on sys.path is the simplest way to get that; in a
 real deployment, this is normally a small shared "contracts" package both sides install.
+
+The two containers are peers sharing a secret (spec section 11.3): IInventoryService has no
+@rpc_method, so only a signed peer call may reach it -- an anonymous one is refused, checked below.
 """
 
 import asyncio
@@ -37,10 +40,15 @@ import unittest
 import urllib.error
 import urllib.request
 
+from ycappuccino.api.endpoints_storage import NotFound
 from ycappuccino.core.framework import Framework
 from ycappuccino.core.testing import TemporaryApplication, wait_until
+from ycappuccino.remote._http import call_peer
 
 CONTAINER_B_PORT = 18162
+SECRET = "shared-by-a-and-b"
+CONTAINER_A_NAME = "componentdirectorycontainera"
+CONTAINER_B = {"host": "localhost", "port": CONTAINER_B_PORT, "scheme": "http", "secret": SECRET}
 
 CONTAINER_B_APPLICATION = {
     "conf/application.yml": f"""
@@ -86,6 +94,28 @@ CONTAINER_B_APPLICATION = {
 
             async def start(self):
                 pass
+
+            async def stop(self):
+                pass
+    """,
+    "PACKAGE/peers.py": f"""
+        from ycappuccino.api.core_base import YCappuccinoComponent
+        from ycappuccino.api.storage import IManager
+        from ycappuccino.remote.models.remote_server import RemoteServer
+
+
+        class KnowsContainerA(YCappuccinoComponent):
+            def __init__(self, manager: IManager):
+                self._manager = manager
+
+            async def start(self):
+                server = RemoteServer()
+                server.id("{CONTAINER_A_NAME}")
+                server.host("localhost")
+                server.port(1)
+                server.scheme("http")
+                server.secret("{SECRET}")
+                await self._manager.up_sert_model(server, subject=None)
 
             async def stop(self):
                 pass
@@ -184,6 +214,7 @@ class TestComponentDirectoryAcrossTwoContainers(unittest.TestCase):
         server.host("localhost")
         server.port(CONTAINER_B_PORT)
         server.scheme("http")
+        server.secret(SECRET)
         asyncio.run(manager.up_sert_model(server, subject=None))
 
         # registering the peer synchronously drives ComponentDirectory.execute() (an ITrigger
@@ -199,31 +230,40 @@ class TestComponentDirectoryAcrossTwoContainers(unittest.TestCase):
         # locally: container A has no implementation of IInventoryService of its own whatsoever
         self.assertEqual(result, 42)
 
-    def test_remote_capabilities_reports_the_qualified_path_over_http(self):
+    def test_remote_capabilities_reports_the_qualified_path_to_a_peer(self):
+        result = call_peer(CONTAINER_B, "__remote_capabilities__", "GET", [], {}, None, local_peer_id=CONTAINER_A_NAME)
+
+        self.assertIn(f"{self.container_b_app.package}.inventory.IInventoryService", _provides(result.body))
+
+    def test_remote_capabilities_hides_an_internal_interface_from_anonymous_callers(self):
         with urllib.request.urlopen(
             f"http://localhost:{CONTAINER_B_PORT}/api/services/__remote_capabilities__", timeout=5
         ) as response:
             payload = json.loads(response.read())
 
-        provides = {
-            qualified_path
-            for component in payload["data"]["components"]
-            for qualified_path in component["provides"]
-        }
-        self.assertIn(f"{self.container_b_app.package}.inventory.IInventoryService", provides)
+        self.assertNotIn(f"{self.container_b_app.package}.inventory.IInventoryService", _provides(payload["data"]))
 
-    def test_remote_dispatch_wire_shape_directly_over_http(self):
+    def test_remote_dispatch_wire_shape_for_a_peer(self):
         qualified_path = f"{self.container_b_app.package}.inventory.IInventoryService"
-        url = f"http://localhost:{CONTAINER_B_PORT}/api/services/__remote_dispatch__/{qualified_path}/check_stock"
-        body = json.dumps({"kwargs": {"sku": "abcd"}}).encode()
-        request = urllib.request.Request(
-            url, data=body, method="POST", headers={"Content-Type": "application/json"}
+
+        result = call_peer(
+            CONTAINER_B, "__remote_dispatch__", "POST", [qualified_path, "check_stock"], {},
+            {"kwargs": {"sku": "abcd"}}, local_peer_id=CONTAINER_A_NAME,
         )
 
-        with urllib.request.urlopen(request, timeout=5) as response:
-            payload = json.loads(response.read())
+        self.assertEqual(result.body, {"result": 28})
 
-        self.assertEqual(payload["data"], {"result": 28})
+    def test_remote_dispatch_refuses_an_internal_method_to_an_anonymous_caller(self):
+        qualified_path = f"{self.container_b_app.package}.inventory.IInventoryService"
+        anonymous = {key: value for key, value in CONTAINER_B.items() if key != "secret"}
+
+        with self.assertRaises(NotFound):
+            call_peer(anonymous, "__remote_dispatch__", "POST", [qualified_path, "check_stock"], {},
+                      {"kwargs": {"sku": "abcd"}})
+
+
+def _provides(capabilities):
+    return {path for component in capabilities.get("components", []) for path in component["provides"]}
 
 
 if __name__ == "__main__":

@@ -74,7 +74,7 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(setattr, Framework, "_singleton", previous)
 
         capabilities = RemoteCapabilities([FakeExposedService("echo")])
-        result = await capabilities.call("GET", [], {}, None, None)
+        result = await capabilities.call("GET", [], {}, None, {"peer": "backend-1"})
 
         self.assertEqual(
             result.body,
@@ -85,6 +85,48 @@ class TestRemoteCapabilities(unittest.IsolatedAsyncioTestCase):
                 ],
             },
         )
+
+
+    async def test_a_caller_other_than_a_peer_only_sees_the_public_interfaces(self):
+        description = ComponentDescription(
+            _FakeComponent,
+            provides=["FakeComponent", "ILoginService", "IManager"],
+            provides_qualified=[
+                "somewhere.FakeComponent",
+                "ycappuccino.api.permissions.ILoginService",
+                "ycappuccino.api.storage.IManager",
+            ],
+        )
+        framework = Framework()
+        framework._components = {"somewhere.FakeComponent": description}
+        previous = Framework._singleton
+        Framework._singleton = framework
+        self.addCleanup(setattr, Framework, "_singleton", previous)
+        capabilities = RemoteCapabilities([])
+
+        for subject in (None, {"sub": "alice", "tid": "acme"}):
+            with self.subTest(subject=subject):
+                result = await capabilities.call("GET", [], {}, None, subject)
+
+                self.assertEqual(
+                    result.body["components"],
+                    [{"module": "somewhere", "class": "FakeComponent",
+                      "provides": ["ycappuccino.api.permissions.ILoginService"]}],
+                )
+
+    async def test_a_caller_other_than_a_peer_sees_no_component_without_public_interface(self):
+        description = ComponentDescription(
+            _FakeComponent, provides=["IManager"], provides_qualified=["ycappuccino.api.storage.IManager"]
+        )
+        framework = Framework()
+        framework._components = {"somewhere.FakeComponent": description}
+        previous = Framework._singleton
+        Framework._singleton = framework
+        self.addCleanup(setattr, Framework, "_singleton", previous)
+
+        result = await RemoteCapabilities([]).call("GET", [], {}, None, None)
+
+        self.assertEqual(result.body, {"services": []})
 
 
 if __name__ == "__main__":

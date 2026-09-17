@@ -28,11 +28,18 @@ replacement of the existing "services" list. This is a further, larger widening 
 capabilities probe discloses than the "service names only" tradeoff above: see dispatch.py's own
 module docstring for the full security discussion (arbitrary method invocation on ANY published
 specification, not just deliberately exposed IExposedServices).
+
+(2026-09-17, spec section 11.3) A peer (subject carrying "peer") still gets everything. Any other
+caller -- a browser, signed in or not -- only gets, in "components", the specifications having at
+least one @rpc_method: the public surface it can actually call through __remote_dispatch__, enough
+for ycappuccino.client to create its proxies before anyone signs in.
 """
 
 from typing import Any
 
+from ycappuccino.api.decorators import get_rpc_methods
 from ycappuccino.api.endpoints_service import IExposedService, ServiceResult
+from ycappuccino.core.component_factory import resolve_class
 from ycappuccino.core.framework import Framework
 
 CAPABILITIES_SERVICE_NAME = "__remote_capabilities__"
@@ -56,6 +63,24 @@ class RemoteCapabilities(IExposedService):
     ) -> ServiceResult:
         result = {"services": [service.name for service in list(self._services) if service.name]}
         components = Framework.get_framework().list_components()
+        if subject is None or "peer" not in subject:
+            components = _public_only(components)
         if components:
             result["components"] = components
         return ServiceResult(body=result)
+
+
+def _public_only(components: list) -> list:
+    public = []
+    for component in components:
+        provides = [path for path in component["provides"] if _is_public(path)]
+        if provides:
+            public.append({**component, "provides": provides})
+    return public
+
+
+def _is_public(qualified_path: str) -> bool:
+    try:
+        return bool(get_rpc_methods(resolve_class(qualified_path)))
+    except Exception:
+        return False
