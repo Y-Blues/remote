@@ -1,6 +1,9 @@
 """
 RemoteServer: registry entry for a known peer YCappuccino instance, called by RemoteCall over
 plain HTTP. Managed manually via /api/crud/remote-servers (see spec: no discovery/heartbeat).
+
+`secret` is the HMAC key shared with that peer (see peer_authentication.py): calls to a peer with a
+secret are signed, and requests signed with it authenticate that peer.
 """
 
 from ycappuccino.api.decorators import Item, Property
@@ -20,6 +23,7 @@ class RemoteServer(Model):
         self._host = None
         self._port = None
         self._scheme = None
+        self._secret = None
 
     @Property(name="host")
     def host(self, a_value: str) -> None:
@@ -32,3 +36,7 @@ class RemoteServer(Model):
     @Property(name="scheme")
     def scheme(self, a_value: str) -> None:
         self._scheme = a_value
+
+    @Property(name="secret")
+    def secret(self, a_value: str) -> None:
+        self._secret = a_value

@@ -217,6 +217,7 @@ class ComponentDirectory(ITrigger):
                     "peer_host": document["host"],
                     "peer_port": document["port"],
                     "peer_scheme": document["scheme"],
+                    "peer_secret": document.get("secret"),
                     "timeout": self._timeout,
                     "opener": self._opener,
                 },

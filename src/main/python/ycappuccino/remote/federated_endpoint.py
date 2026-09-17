@@ -70,7 +70,7 @@ class FederatedServiceEndpoint(IServiceEndpoint):
             await self._check(service, subject)
             return await service.call(method, extra_path, params, body, subject)
 
-        return await self._call_remote(name, method, extra_path, params, body)
+        return await self._call_remote(name, method, extra_path, params, body, subject)
 
     def _find_local(self, name: str) -> IExposedService | None:
         for service in list(self._services):
@@ -91,7 +91,7 @@ class FederatedServiceEndpoint(IServiceEndpoint):
             raise Forbidden(f"call {service.name} is not authorized")
 
     async def _call_remote(
-        self, name: str, method: str, extra_path: list, params: dict, body: Any
+        self, name: str, method: str, extra_path: list, params: dict, body: Any, subject: dict | None
     ) -> ServiceResult:
         peer_id = await self._directory.locate(name)
         if peer_id is None:
@@ -104,5 +104,5 @@ class FederatedServiceEndpoint(IServiceEndpoint):
         document = peer.get_storage_model()
         return call_peer(
             document, name, method, extra_path, params, body,
-            timeout=self._timeout, opener=self._opener,
+            timeout=self._timeout, opener=self._opener, subject=subject,
         )

@@ -46,5 +46,5 @@ class RemoteCall(IExposedService):
         document = peer.get_storage_model()
         return call_peer(
             document, target_service, method, target_extra, params, body,
-            timeout=self._timeout, opener=self._opener,
+            timeout=self._timeout, opener=self._opener, subject=subject,
         )

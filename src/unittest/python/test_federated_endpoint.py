@@ -5,6 +5,7 @@ federated_endpoint.py's module docstring for why it cannot depend on ServiceEndp
 falls back to ServiceDirectory + a direct HTTP call to the resolved peer's own /api/services/<name>.
 """
 
+import json
 import unittest
 
 from discovery_fixtures import FakeManager, FakeResponse
@@ -101,6 +102,16 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
         request = opener.requests[0]
         self.assertEqual(request.full_url, "http://peer.example:9000/api/services/remote_echo")
         self.assertEqual(request.get_method(), "POST")
+
+    async def test_forwarding_to_a_peer_carries_the_caller_subject(self):
+        manager = FakeManager({"peer-a": {"host": "peer.example", "port": 9000, "scheme": "http", "secret": "s3cr3t"}})
+        opener = FakeOpener({"status": 200, "meta": {}, "data": {}})
+        endpoint = FederatedServiceEndpoint([], [], FakeDirectory({"remote_echo": "peer-a"}), manager, opener=opener)
+
+        await endpoint.call("remote_echo", "POST", [], {}, {}, {"sub": "alice", "tid": "acme"})
+
+        headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
+        self.assertEqual(json.loads(headers["x-ycappuccino-subject"]), {"sub": "alice", "tid": "acme"})
 
     async def test_missing_everywhere_is_not_found(self):
         endpoint = FederatedServiceEndpoint([], [], FakeDirectory(), FakeManager())

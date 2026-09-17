@@ -79,10 +79,11 @@ def _build_init() -> Callable:
     core/component_factory.py's describe_component."""
     source = (
         "def __init__(self, peer_host: str = '', peer_port: int = 0, peer_scheme: str = 'http', "
-        "timeout: float = _DEFAULT_TIMEOUT, opener=None):\n"
+        "peer_secret: str = None, timeout: float = _DEFAULT_TIMEOUT, opener=None):\n"
         "    self._peer_host = peer_host\n"
         "    self._peer_port = peer_port\n"
         "    self._peer_scheme = peer_scheme\n"
+        "    self._peer_secret = peer_secret\n"
         "    self._timeout = timeout\n"
         "    self._opener = opener\n"
     )
@@ -130,13 +131,18 @@ class _GenericRemoteProxyBase:
 
     async def _dispatch(self, method_name: str, kwargs: dict) -> Any:
         kwargs = dict(kwargs)
-        kwargs.pop("subject", None)  # never forwarded, see spec section 3 / dispatch.py
+        # the subject travels signed in a header (spec section 11.2), never in the payload, where the
+        # peer's dispatcher would ignore it anyway
+        subject = kwargs.pop("subject", None)
 
-        document = {"host": self._peer_host, "port": self._peer_port, "scheme": self._peer_scheme}
+        document = {
+            "host": self._peer_host, "port": self._peer_port, "scheme": self._peer_scheme,
+            "secret": self._peer_secret,
+        }
         result = call_peer(
             document, DISPATCH_SERVICE_NAME, "POST",
             [self._ycappuccino_qualified_path, method_name],
             {}, {"kwargs": kwargs},
-            timeout=self._timeout, opener=self._opener,
+            timeout=self._timeout, opener=self._opener, subject=subject,
         )
         return result.body.get("result") if isinstance(result.body, dict) else result.body

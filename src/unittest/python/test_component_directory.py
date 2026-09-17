@@ -147,8 +147,24 @@ class TestComponentDirectoryProxySpawning(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(issubclass(component, IInventoryService))
         self.assertEqual(
             properties,
-            {"peer_host": "a.example", "peer_port": 9000, "peer_scheme": "http", "timeout": 5.0, "opener": opener},
+            {"peer_host": "a.example", "peer_port": 9000, "peer_scheme": "http", "peer_secret": None,
+             "timeout": 5.0, "opener": opener},
         )
+
+    async def test_the_spawned_proxy_gets_the_peer_secret(self):
+        manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http", "secret": "s3cr3t"}})
+        opener = FakeComponentsOpener(
+            {"a.example:9000": [_component("somewhere", "InventoryService", [QUALIFIED_A])]}
+        )
+        instantiate = RecordingInstantiate()
+        directory = ComponentDirectory(
+            manager, opener=opener, instantiate=instantiate, local_specifications=lambda: set()
+        )
+
+        await directory._discover_all()
+
+        _, properties = instantiate.calls[0]
+        self.assertEqual(properties["peer_secret"], "s3cr3t")
 
     async def test_does_not_spawn_a_proxy_already_available_locally(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})

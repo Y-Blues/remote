@@ -19,6 +19,13 @@ class IInventoryService(YCappuccinoComponent, abc.ABC):
         """units of `sku` available at `warehouse`"""
 
 
+class IAuditedService(YCappuccinoComponent, abc.ABC):
+
+    @abc.abstractmethod
+    async def record(self, event: str, subject: dict | None = None) -> int:
+        """records `event` for the subject"""
+
+
 class FakeResponse:
     def __init__(self, payload):
         self.status = 200
@@ -71,6 +78,19 @@ class TestMakeGenericProxy(unittest.IsolatedAsyncioTestCase):
         await proxy.check_stock("sku-only")
 
         self.assertEqual(json.loads(opener.requests[0].data), {"kwargs": {"sku": "sku-only", "warehouse": "main"}})
+
+    async def test_a_subject_argument_is_forwarded_signed_never_in_the_payload(self):
+        opener = FakeOpener({"status": 200, "meta": {}, "data": {"result": 1}})
+        proxy_class = make_generic_proxy(IAuditedService, "somewhere.IAuditedService")
+        proxy = proxy_class(peer_host="peer.example", peer_port=9000, peer_secret="s3cr3t", opener=opener)
+
+        await proxy.record("login", subject={"sub": "alice", "tid": "acme"})
+
+        request = opener.requests[0]
+        headers = {key.lower(): value for key, value in request.header_items()}
+        self.assertEqual(json.loads(request.data), {"kwargs": {"event": "login"}})
+        self.assertEqual(json.loads(headers["x-ycappuccino-subject"]), {"sub": "alice", "tid": "acme"})
+        self.assertIn("x-ycappuccino-signature", headers)
 
     async def test_the_proxy_class_is_a_concrete_subclass_of_the_interface(self):
         proxy_class = make_generic_proxy(IInventoryService, "somewhere.IInventoryService")

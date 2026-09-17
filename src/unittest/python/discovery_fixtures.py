@@ -42,6 +42,8 @@ class FakeManager:
         server.host(document["host"])
         server.port(document["port"])
         server.scheme(document["scheme"])
+        if document.get("secret"):
+            server.secret(document["secret"])
         return server
 
     async def start(self):

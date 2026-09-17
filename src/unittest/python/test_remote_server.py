@@ -26,6 +26,16 @@ class TestRemoteServer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored["port"], 9000)
         self.assertEqual(stored["scheme"], "http")
 
+    async def test_secret_round_trips_through_the_manager(self):
+        server = RemoteServer()
+        server.id("eu-node-2")
+        server.secret("s3cr3t")
+
+        await self.manager.up_sert_model(server)
+        stored = (await self.manager.get_one("remoteServer", "eu-node-2")).get_storage_model()
+
+        self.assertEqual(stored["secret"], "s3cr3t")
+
 
 if __name__ == "__main__":
     unittest.main()

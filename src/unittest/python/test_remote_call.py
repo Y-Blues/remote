@@ -27,6 +27,8 @@ class FakeManager:
         server.host(document["host"])
         server.port(document["port"])
         server.scheme(document["scheme"])
+        if document.get("secret"):
+            server.secret(document["secret"])
         return server
 
     async def start(self):
@@ -150,6 +152,15 @@ class TestRemoteCall(unittest.IsolatedAsyncioTestCase):
         result = await remote_call.call("GET", ["peer-a", "echo"], {}, None, None)
 
         self.assertEqual(result.headers, {"Set-Cookie": "a=b"})
+
+    async def test_the_caller_subject_is_forwarded_to_a_peer_with_a_secret(self):
+        opener = FakeOpener()
+        remote_call = RemoteCall(FakeManager({"peer-a": {**PEERS["peer-a"], "secret": "s3cr3t"}}), opener=opener)
+
+        await remote_call.call("POST", ["peer-a", "echo"], {}, {}, {"sub": "alice", "tid": "acme"})
+
+        headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
+        self.assertEqual(json.loads(headers["x-ycappuccino-subject"]), {"sub": "alice", "tid": "acme"})
 
     async def test_secure_flag_and_name(self):
         self.assertTrue(RemoteCall.secure)

@@ -9,6 +9,7 @@ repeating the literal in every module that looks a peer up through IManager.
 """
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -16,6 +17,13 @@ from typing import Any, Callable
 
 from ycappuccino.api.endpoints_service import ServiceResult
 from ycappuccino.api.endpoints_storage import Forbidden, InvalidRequest, NotAuthenticated, NotFound
+from ycappuccino.remote.peer_authentication import (
+    PEER_HEADER,
+    SIGNATURE_HEADER,
+    SUBJECT_HEADER,
+    TIMESTAMP_HEADER,
+    sign,
+)
 
 REMOTE_SERVER_ITEM_ID = "remoteServer"
 DEFAULT_TIMEOUT = 5.0
@@ -40,6 +48,8 @@ def call_peer(
     body: Any,
     timeout: float = DEFAULT_TIMEOUT,
     opener: Callable | None = None,
+    local_peer_id: str | None = None,
+    subject: dict | None = None,
 ) -> ServiceResult:
     """
     Forward one call to `service` on the peer described by `document` (a RemoteServer storage model:
@@ -48,13 +58,25 @@ def call_peer(
     status (see spec section 2). A network error (unreachable peer, timeout, DNS) is not caught here:
     it propagates unwrapped, exactly like today's RemoteCall.
 
-    No subject is ever sent to the peer (see spec section 3): the target service on the peer must be
-    secure=False, or this call surfaces NotAuthenticated/Forbidden like any other >= 400 status.
+    When the peer document carries a `secret`, the request is signed (peer_authentication.py) as
+    `local_peer_id` (default: this Framework's application name), and `subject` -- the user this call
+    is made on behalf of, if any -- travels signed in the X-YCappuccino-Subject header. Without a
+    secret nothing is signed and no subject is sent: the peer sees an anonymous request.
     """
     opener = opener if opener is not None else urllib.request.urlopen
     url = build_url(document, service, extra_path, params)
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Content-Type": "application/json"} if data is not None else {}
+    secret = document.get("secret")
+    if secret:
+        timestamp = str(int(time.time()))
+        subject_header = json.dumps(subject) if subject is not None else ""
+        if subject_header:
+            headers[SUBJECT_HEADER] = subject_header
+        headers[PEER_HEADER] = local_peer_id or _local_peer_id()
+        headers[TIMESTAMP_HEADER] = timestamp
+        path = urllib.parse.urlsplit(url).path
+        headers[SIGNATURE_HEADER] = sign(secret, method, path, timestamp, subject_header, data or b"")
     request = urllib.request.Request(url, data=data, method=method, headers=headers)
 
     try:
@@ -64,6 +86,12 @@ def call_peer(
             return _translate(error.code, json.loads(error.read()), error.headers)
     with response:
         return _translate(response.status, json.loads(response.read()), response.headers)
+
+
+def _local_peer_id() -> str:
+    from ycappuccino.core.framework import Framework  # lazy: keeps unit tests framework-free
+
+    return Framework.get_framework().get_app_name()
 
 
 def _translate(status: int, payload: dict, headers: Any) -> ServiceResult:

@@ -46,6 +46,7 @@ server.id("eu-node-2")           # identifiant choisi, utilisé dans l'adressage
 server.host("eu-node-2.internal")
 server.port(9000)
 server.scheme("http")
+server.secret("clé partagée")    # la même des deux côtés, voir "Authentification"
 await manager.up_sert_model(server)
 ```
 
@@ -83,10 +84,25 @@ class Caller(YCappuccinoComponent):
 
 ## Authentification
 
-**Non transmise au pair dans cette version** : `IExposedService.call` reçoit un sujet déjà décodé, jamais
-les en-têtes bruts de la requête entrante, donc `remote_call` n'a rien à reforwarder. Le service ciblé sur
-le pair doit donc être `secure=False`. `remote_call` lui-même reste `secure=True` : seul un appelant local
-autorisé peut l'utiliser. Voir la conception (section 3) pour le compromis et les évolutions possibles.
+Deux instances s'authentifient par une signature HMAC-SHA256 de chaque requête, avec le `secret` de leur
+`RemoteServer` respectif (le même secret enregistré des deux côtés). Rien de secret ne circule :
+
+- **en sortie** (`_http.call_peer`, utilisé par tous les appels vers un pair) : si le `RemoteServer` a un
+  `secret`, la requête reçoit `X-YCappuccino-Peer` (le `name` de l'`application.yml` local),
+  `X-YCappuccino-Timestamp` et `X-YCappuccino-Signature`, signature de
+  `méthode\nchemin\nhorodatage\nsujet\n` + corps. Sans `secret`, rien n'est signé : le pair voit une
+  requête anonyme ;
+- **en entrée** : `PeerHmacAuthentication` (une `IAuthentication`, essayée par `http_server` avec les
+  autres, par exemple le JWT de `permissions_app`) retrouve le `RemoteServer` annoncé, vérifie la signature
+  et refuse un horodatage à plus de 60 s. Le sujet obtenu est `{"peer": <id>}`.
+
+**Appel pour le compte d'un utilisateur** : le sujet reçu par `remote_call`, `FederatedServiceEndpoint` ou
+un proxy généré (paramètre `subject`) est transmis au pair dans `X-YCappuccino-Subject`, couvert par la
+signature ; le pair obtient alors `{"sub": ..., "tid": ..., "peer": <id>}`. Un sujet ne passe jamais sans
+signature. Un service `secure=True` du pair est donc atteignable, son `IAuthorization` décide.
+
+Pour charger l'authentification seule, sans le reste de `remote`, lister les modules dans `bundle_prefix` :
+`ycappuccino.remote.models` et `ycappuccino.remote.peer_authentication`.
 
 ## Erreurs
 
