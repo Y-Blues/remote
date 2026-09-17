@@ -100,25 +100,57 @@ non tranchées — maintenant tranchées) :
   Un widget par type de champ (`Input`/`Checkbox`/`Select`), un `Button` par action, erreurs de validation
   affichées inline avant tout appel à `perform_action`.
 
-**Pas encore fait** : layout au-delà d'une liste verticale simple (pas de grille/sections/écrans
-imbriqués — non nécessaire pour prouver le modèle, à réévaluer si un vrai écran le réclame), navigation
-entre plusieurs écrans (un « écran suivant » après une action réussie), lien réel avec
-`ServiceDescriptor`/`@rpc_method` (sous-projet 1, toujours pas implémenté à ce stade), adapters Qt et web.
+**Pas encore fait avant le 2026-09-17** : layout au-delà d'une liste verticale simple, navigation entre
+plusieurs écrans, lien réel avec `ServiceDescriptor`/`@rpc_method` (sous-projet 1, toujours pas
+implémenté à ce stade), adapters Qt et web.
+
+## Décidé, partie 3 (2026-09-17, avancement) : `ui_web` (adapter navigateur/Pyodide) implémenté
+
+Deuxième adapter livré, TDD (`superpowers:test-driven-development`), 11 tests réels, `uv run python -m
+unittest` vert. Dépôt réel (`Y-Blues/ui_web`, cloné/poussé, plus de "git init local" comme `ui`/`ui_shell`
+avant leur premier push).
+
+- **`ycappuccino.ui_web.dom.DomBinding`** (`Protocol`) : la seule primitive que ce dépôt invente —
+  `create_element`/`append_child`/`set_text`/`set_attribute`/`get_value`/`set_value`/`on_click`.
+  `client` ne fournissait jusqu'ici que des proxys de données (`RemoteCrud`, ...), **aucune primitive DOM**
+  — confirmé en explorant `client` avant d'écrire ce dépôt, pas supposé.
+- **`ycappuccino.ui_web.app.render_screen(screen, transport, dom, mount) -> ScreenView`** : même forme que
+  `ui_shell.app.ScreenApp` (un input par `Field`, un bouton par `Action`, validation inline avant
+  `perform_action`, coercion par `Field.type` — `number`→`int`/`float`, `boolean`→`bool`,
+  `list`→liste virgule). Champ `choice` : le tag `<select>` est créé mais **sans ses `<option>`** — pas
+  encore fait, pas de test rouge écrit pour ça (voir Ouvert).
+- **`ycappuccino.ui_web.pyodide_dom.PyodideDom`** : la vraie implémentation, `js.document`/
+  `pyodide.ffi.create_proxy` — importés à l'intérieur des fonctions, jamais au niveau module, même
+  discipline que `client/pyodide_transport.py`. **Seul le chemin `ImportError`→`RuntimeError` de
+  `__init__` est prouvé par un vrai test** (pas de `js` en CPython nu) ; tout le reste (appels DOM réels,
+  le pont clic synchrone JS → coroutine Python via `asyncio.ensure_future`) est écrit depuis la surface
+  d'API connue, **non exécuté contre un vrai navigateur** — même honnêteté que `client/README.md`, pas
+  édulcorée dans `ui_web/README.md`.
+- **`FakeDom`** (`src/unittest/python/fake_dom.py`) : arbre en mémoire réel (pas un mock) — les tests
+  vérifient un vrai état d'arbre et peuvent réellement déclencher+attendre un callback de clic enregistré,
+  prouvant le câblage de `render_screen`, pas juste qu'une méthode a été appelée.
+- `ui/README.md` mis à jour : la mention "à venir : ycappuccino-ui-web" pointe maintenant vers le dépôt
+  réel.
 
 ## Ouvert — reste à trancher
 
 - **Adapter Qt** (`ycappuccino-ui-qt`, PySide6, décidé) : même modèle, pas commencé.
-- **Adapter web** (`ycappuccino-ui-web`, Pyodide/`client`, décidé, risque hérité assumé) : pas commencé,
-  ni son bootstrap navigateur (reprendre `client/static/`'s séquence ou en écrire un propre).
-- **Layout au-delà d'une liste de champs** : pas encore un vrai besoin, à ne pas concevoir par anticipation
-  (voir « Pas encore fait » ci-dessus).
-- **Où le test d'intégration \"réel\" de l'adapter web s'arrête** : même limite que `client` — rien de ce
-  qui touche un vrai navigateur ne peut être prouvé dans l'environnement qui produit le code, à documenter
-  avec la même honnêteté que `client/README.md`, pas à passer sous silence, le jour où cet adapter démarre.
+- **`<option>` d'un champ `choice`** dans `ui_web` : le `<select>` existe, ses options non — prochaine
+  étape évidente de `ui_web`, pas encore un test rouge écrit pour elle.
+- **Bootstrap navigateur de `ui_web`** : pas de `static/index.html` propre à ce dépôt — reste à composer
+  avec la séquence de `client/static/main.py` (charger Pyodide/iPOPO/api/core/client, puis `ui`/`ui_web`,
+  puis appeler `render_screen` et attacher `mount` au vrai `document.body`) — non fait, non vérifié.
+- **Layout au-delà d'une liste de champs** : pas encore un vrai besoin, à ne pas concevoir par anticipation.
+- **Vérification navigateur réelle de `ui_web`** : même limite que `client` — rien de ce qui touche un
+  vrai navigateur ne peut être prouvé dans l'environnement qui produit le code ; `PyodideDom` et son pont
+  d'événements restent à valider manuellement avant toute mise en production.
 
 ## Prochaines étapes
 
-1. Adapter Qt (PySide6) ou adapter web (`client`/Pyodide) ensuite — pas encore choisi lequel des deux.
-2. Une fois un deuxième adapter livré, produire le design figé
+1. Options du `<select>` pour `Field.type == "choice"` dans `ui_web` (TDD, `FakeDom` suffit).
+2. Bootstrap navigateur réel de `ui_web` (composé avec `client/static/main.py`), puis vérification
+   manuelle en navigateur (seule façon de lever les incertitudes listées dans `ui_web/README.md`).
+3. Adapter Qt (PySide6) — pas encore commencé, pas urgent tant que l'adapter web n'est pas vérifié.
+4. Une fois un adapter vérifié en conditions réelles (ou l'adapter Qt livré), produire le design figé
    (`docs/.../specs/YYYY-MM-DD-ui-screen-library-design.md`) — ce checkpoint reste un brainstorming avancé,
-   pas une spec figée, tant qu'un seul adapter existe.
+   pas une spec figée.
