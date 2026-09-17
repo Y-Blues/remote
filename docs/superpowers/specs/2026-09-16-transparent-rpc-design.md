@@ -244,6 +244,20 @@ fournirait un second `IServiceEndpoint` en conflit avec `endpoints_service.Servi
 6. Tâches 3 à 6 du plan (routes REST par méthode, migration des services, `ServiceDescriptor`, swagger).
 7. Navigation multi-écrans dans `ui_web`, bootstrap navigateur, `permissions_app` en mode web.
 
+### 11.8 Étape 6 réalisée (2026-09-17), écarts au plan
+
+- Routage REST : `IExposedService.call` n'est plus abstraite. Un service qui la redéfinit traite lui-même
+  ses requêtes (`RemoteCall`, `RemoteDispatch`, services applicatifs existants) ; sinon
+  `endpoints_service.endpoint.call_service` route vers le `@rpc_method` dont le verbe et le gabarit de
+  chemin correspondent, avec le sujet injecté. `FederatedServiceEndpoint` utilise la même fonction.
+- `LoginService` ne fournit plus `ILoginService` : `login()` ne peut pas rendre à la fois `str` (proxy) et
+  `{"token"}` (REST). `PasswordLogin` implémente `ILoginService` (et porte la clé : `components.PasswordLogin.key`),
+  `LoginService`/`LoginCookieService` en sont les faces HTTP.
+- Catalogue : décrit des **interfaces qualifiées** (ce que les proxys consomment), pas des noms de service.
+  `__remote_capabilities__` publie `"descriptors"` ; `ServiceDescriptor` ne stocke que les pairs (la vue locale
+  est calculée) ; `ServiceCatalog.locate` renvoie les host:port.
+- Swagger : `api.endpoints_service.service_routes` dérive les routes des `@rpc_method` quand `routes` est vide.
+
 ## Hors périmètre (ce document)
 
 - Sous-projets 2 (`hosts` UI shell) et 3 (frontend `permissions_app`) : non démarrés, décision utilisateur
