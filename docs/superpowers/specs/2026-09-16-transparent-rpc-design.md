@@ -258,6 +258,20 @@ fournirait un second `IServiceEndpoint` en conflit avec `endpoints_service.Servi
   est calculée) ; `ServiceCatalog.locate` renvoie les host:port.
 - Swagger : `api.endpoints_service.service_routes` dérive les routes des `@rpc_method` quand `routes` est vide.
 
+### 11.9 Étape 7 réalisée (2026-09-17)
+
+- Navigateur réel (Chromium, Pyodide 0.28.3 standard) : aucun thread possible. `core.AsyncRunner` exécute
+  alors les coroutines des composants sur le thread appelant, et ne crée plus de boucle hors de son thread
+  (sous Pyodide, en créer une remplaçait celle de la page). Plus besoin de build pthread ni de COOP/COEP.
+- `client.bootstrap.start_client` + page générique `client/static/index.html` pilotée par `ycappuccino.json`.
+- `ui` : `ComponentTransport` (méthode d'une interface depuis un écran). `ui_web` : `Navigator`, `on_result`,
+  erreurs du backend à l'écran, `ScreenView.set_value`, `IWebPage`/`PyodidePage`, `ycappuccino.ui_web.testing`.
+- `permissions_app` : écrans partagés (`ycappuccino.permissions.screens`), connexion par `ILoginService` dans
+  les deux consoles, `PermissionsWebApp` vérifiée dans Chromium face à un vrai backend (connexion, erreurs,
+  organisation, création d'utilisateur puis connexion de cet utilisateur, déconnexion).
+- Non vérifiés : Firefox/Safari, service de la page et des wheels par `hosts`. La console terminal ne
+  pré-remplit pas encore l'id du compte à l'attribution du rôle.
+
 ## Hors périmètre (ce document)
 
 - Sous-projets 2 (`hosts` UI shell) et 3 (frontend `permissions_app`) : non démarrés, décision utilisateur
