@@ -27,6 +27,10 @@ class FakeService:
         self.calls.append((sku, warehouse))
         return len(sku) * 2
 
+    async def whoami(self, subject=None):
+        self.calls.append(subject)
+        return subject
+
     def not_a_coroutine(self, value):
         return value * 3
 
@@ -80,6 +84,28 @@ class TestRemoteDispatch(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result.body, {"result": 21})
+
+    async def test_forwards_the_already_decoded_subject_to_a_method_that_accepts_one(self):
+        result = await self.dispatch.call(
+            "POST", [QUALIFIED_PATH, "whoami"], {}, {}, {"sub": "alice", "tid": "acme"}
+        )
+
+        self.assertEqual(result.body, {"result": {"sub": "alice", "tid": "acme"}})
+
+    async def test_does_not_forward_subject_to_a_method_without_that_parameter(self):
+        result = await self.dispatch.call(
+            "POST", [QUALIFIED_PATH, "check_stock"], {}, {"kwargs": {"sku": "widget"}}, {"sub": "alice"}
+        )
+
+        self.assertEqual(result.body, {"result": 12})
+        self.assertEqual(self.service.calls, [("widget", "main")])
+
+    async def test_client_supplied_kwargs_subject_is_overridden_by_the_decoded_one(self):
+        result = await self.dispatch.call(
+            "POST", [QUALIFIED_PATH, "whoami"], {}, {"kwargs": {"subject": {"sub": "spoofed"}}}, {"sub": "real"}
+        )
+
+        self.assertEqual(result.body, {"result": {"sub": "real"}})
 
     async def test_missing_extra_path_is_invalid(self):
         with self.assertRaises(InvalidRequest):

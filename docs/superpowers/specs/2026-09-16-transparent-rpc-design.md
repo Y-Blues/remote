@@ -1,6 +1,7 @@
 # Transparent inter-instance service calls — design (sous-projet 1)
 
-**Status: DÉCIDÉ.** Ce document remplace le checkpoint
+**Status: DÉCIDÉ, amendé le 2026-09-17 (section 11, qui prime sur les sections qu'elle modifie).** Ce
+document remplace le checkpoint
 [`2026-09-16-transparent-rpc-checkpoint.md`](2026-09-16-transparent-rpc-checkpoint.md) (conservé pour
 l'historique) : tous les points listés « Open » y sont ici tranchés. Prochaine étape : écrire le plan
 d'implémentation tâche par tâche (TDD, un commit par tâche revue), comme pour
@@ -156,6 +157,92 @@ commits que le reste de ce plan :
   `(YCappuccinoComponent,)` seul.
 - Tests à vérifier/adapter à l'implémentation : `core/src/unittest/python/test_component_factory.py`,
   `api/src/unittest/python/test_interfaces.py`.
+
+## 11. Amendement du 2026-09-17 : `client` pair de premier rang, subject propagé, dispatch à deux niveaux
+
+Décisions utilisateur du 2026-09-17, qui complètent (et sur les points signalés, modifient) les sections
+précédentes.
+
+### 11.1 `client` utilise le même mécanisme que `remote`
+
+Le navigateur (`client`, vrai `Framework` sous Pyodide) est une instance YCappuccino comme les autres : le
+code applicatif y dépend des interfaces backend (`ICrud`, `ILoginService`, ...) par injection, et ce sont
+des **proxies locaux synthétisés par réflexion sur l'interface** qui appellent le backend en JSON-RPC via
+`__remote_dispatch__` — même forme que `remote.remote_proxy.make_generic_proxy`, dupliquée dans `client`
+(jamais importée, `client` ne dépend pas de `remote`). Cela **remplace** `client.remote_proxy.make_remote`
+et `known_interfaces.KNOWN_INTERFACES` (inférence verbe/chemin REST depuis les noms de méthode, limitée à 4
+interfaces). N'importe quelle interface backend devient proxyable. La découverte reste faite **avant**
+`Framework().init()` (module généré, `client/discovery.py`) : côté navigateur, une dépendance fédérée peut
+donc être requise, contrairement à la limitation de la section 5 qui ne concerne que `remote`.
+
+Aucune classe « transport » n'est construite par le code applicatif : les ponts `ICrud`/`IServiceEndpoint`
+→ `ui.transport.Transport` vivent dans `ui` (`ycappuccino.ui.ycappuccino_transport`), et le seul service
+spécifique client que le code applicatif peut nommer est la session (le jeton porté par le transport).
+
+### 11.2 Un subject pour tous les appels dispatchés
+
+- `RemoteDispatch` transmet le subject authentifié de la requête (celui décodé par la chaîne
+  `IAuthentication` de `http_server`) à toute méthode cible déclarant un paramètre `subject`. Un `subject`
+  placé par l'appelant dans ses `kwargs` est ignoré (jamais d'usurpation par la charge utile).
+- Navigateur : authentifié par le JWT utilisateur (`JwtAuthentication`), subject `{"sub", "tid"}`.
+- Pair backend appelant **pour le compte d'un utilisateur** (modifie la section 4) : `call_peer` accepte
+  `subject` et l'envoie dans un en-tête `X-YCappuccino-Subject` (JSON), **inclus dans le message signé**
+  (`method\npath\ntimestamp\nsubject\n` + corps). `PeerHmacAuthentication` retourne alors le subject
+  transmis enrichi de `"peer": <peer id>` ; sans en-tête subject, `{"peer": <peer id>}` comme prévu.
+  `remote_proxy._dispatch` transmet le `subject` reçu au lieu de le jeter.
+
+### 11.3 Deux niveaux d'accès sur `__remote_dispatch__` (modifie section 4, conséquence)
+
+Le navigateur n'est pas un pair de confiance (code lisible, ne peut détenir aucun secret HMAC). L'accès est
+donc décidé par `RemoteDispatch` lui-même, selon l'appelant :
+
+| Appelant (subject) | Méthodes appelables |
+|---|---|
+| pair HMAC (`"peer"` présent) | toute méthode dispatchable (niveau interne, section 2) |
+| utilisateur JWT ou anonyme | seulement les méthodes marquées `@rpc_method` **sur l'interface résolue** |
+
+Pour une méthode `@rpc_method(secure=True)` (défaut) appelée hors pair : subject requis (sinon
+`NotAuthenticated`), puis `IAuthorization.is_authorized(subject, "call", "<chemin qualifié>.<méthode>")`
+(sinon `Forbidden`) — une `RolePermission` `call:<chemin>.*` l'accorde, `*:*` couvre le superadmin.
+`secure=False` : l'appel passe, la méthode porte elle-même son contrôle (login ; `Crud`/`Drafts`/
+`ItemCatalog` via `Access`, `ServiceEndpoint` via le `secure` de chaque service — même sémantique que
+`IExposedService.secure` aujourd'hui). `RemoteDispatch` reste donc `secure=False` au niveau du service
+(sinon un anonyme ne pourrait jamais se connecter) et **n'est pas** migré vers `secure=True` comme
+l'annonçait la section 4.
+
+`RemoteCapabilities` reste `secure=False` : un pair reçoit toute la liste, tout autre appelant seulement les
+interfaces ayant au moins une méthode `@rpc_method` (la surface publique), ce qui suffit à la découverte du
+navigateur avant connexion.
+
+### 11.4 `@rpc_method` (précise section 6)
+
+`@rpc_method(summary: str = "", secure: bool = True)`, posé sur les méthodes **abstraites des interfaces**
+d'`api` (pas sur les implémentations : une implémentation ne peut pas élargir la surface publique). Marqués
+`secure=False` dans ce lot : toutes les méthodes de `ICrud`, `IDrafts`, `IItemCatalog`, `IServiceEndpoint`,
+et `ILoginService.login`.
+
+### 11.5 `ILoginService` typé
+
+Nouvelle interface `api/permissions.py` : `ILoginService.login(login: str, password: str) -> str` (le
+jeton), `@rpc_method(secure=False)`. `permissions_app.LoginService` l'implémente en plus de
+`IExposedService` (la route REST `login` reste pour les clients non-framework, migrée en tâche 4).
+
+### 11.6 Déploiement backend
+
+Un backend servant le navigateur charge `ycappuccino.remote.dispatch`, `ycappuccino.remote.capabilities`
+et `ycappuccino.remote.peer_authentication` en listant **ces modules** dans `bundle_prefix` (déjà supporté
+par `Framework._module_names`), pas le paquet `ycappuccino.remote` entier : `FederatedServiceEndpoint` y
+fournirait un second `IServiceEndpoint` en conflit avec `endpoints_service.ServiceEndpoint`.
+
+### 11.7 Ordre d'implémentation (remplace « Prochaine étape »)
+
+1. Tâche 1 du plan (HMAC, multi-auth, `IAuthentication` élargi), avec l'en-tête subject signé (11.2).
+2. `@rpc_method(summary, secure)` + marquage des interfaces (11.4) + `ILoginService` (11.5).
+3. Autorisation à deux niveaux dans `RemoteDispatch` et filtrage de `RemoteCapabilities` (11.3).
+4. Réécriture de `client` (11.1).
+5. Fin du nettoyage (section 10 : `YCappuccinoRemote`, `list_components.py`, `_INTERFACE_ROOTS`).
+6. Tâches 3 à 6 du plan (routes REST par méthode, migration des services, `ServiceDescriptor`, swagger).
+7. Navigation multi-écrans dans `ui_web`, bootstrap navigateur, `permissions_app` en mode web.
 
 ## Hors périmètre (ce document)
 

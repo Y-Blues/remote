@@ -80,6 +80,13 @@ def _default_locate_service(specification_name: str) -> tuple:
     return context.get_service(reference), reference
 
 
+def _accepts_subject(target: Callable) -> bool:
+    try:
+        return "subject" in inspect.signature(target).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def _default_release_service(reference: Any) -> None:
     if reference is None:
         return
@@ -128,11 +135,13 @@ class RemoteDispatch(IExposedService):
         if service is None:
             raise NotFound(f"no local instance currently provides {qualified_path!r}")
         try:
-            return await self._invoke(service, qualified_path, method_name, body)
+            return await self._invoke(service, qualified_path, method_name, body, subject)
         finally:
             self._release_service(reference)
 
-    async def _invoke(self, service: Any, qualified_path: str, method_name: str, body: Any) -> ServiceResult:
+    async def _invoke(
+        self, service: Any, qualified_path: str, method_name: str, body: Any, subject: dict | None
+    ) -> ServiceResult:
         if method_name in _NEVER_DISPATCHABLE or method_name.startswith("_"):
             raise NotFound(f"{qualified_path!r} has no callable method {method_name!r}")
         target = getattr(service, method_name, None)
@@ -141,7 +150,12 @@ class RemoteDispatch(IExposedService):
 
         payload = body or {}
         args = payload.get("args") or []
-        kwargs = payload.get("kwargs") or {}
+        kwargs = dict(payload.get("kwargs") or {})
+        # the subject is the one http_server decoded from this request's own credentials, never one
+        # the caller put in its payload
+        kwargs.pop("subject", None)
+        if _accepts_subject(target):
+            kwargs["subject"] = subject
         result = target(*args, **kwargs)
         if inspect.isawaitable(result):
             result = await result
