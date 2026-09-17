@@ -52,5 +52,30 @@ class TestCallPeerSigning(unittest.TestCase):
             self.assertIsNone(_header(request, name))
 
 
+
+class NotJsonOpener:
+    """a peer still starting: its HTTP server answers before its API exists, with a non-JSON page"""
+
+    def __init__(self, status):
+        self.status = status
+
+    def __call__(self, request, timeout=None):
+        import io
+        import urllib.error
+
+        raise urllib.error.HTTPError(request.full_url, self.status, "Not Found", {}, io.BytesIO(b"<html>404</html>"))
+
+
+class TestCallPeerErrors(unittest.TestCase):
+
+    def test_a_non_json_error_keeps_its_status(self):
+        from ycappuccino.api.endpoints_storage import NotFound
+
+        with self.assertRaises(NotFound):
+            call_peer(PEER, "echo", "GET", [], None, None, opener=NotJsonOpener(404))
+        with self.assertRaises(RuntimeError):
+            call_peer(PEER, "echo", "GET", [], None, None, opener=NotJsonOpener(503))
+
+
 if __name__ == "__main__":
     unittest.main()

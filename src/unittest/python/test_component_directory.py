@@ -310,6 +310,19 @@ class TestComponentDirectoryFromConfiguration(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(issubclass(component, IInventoryService))
         self.assertEqual((properties["peer_host"], properties["peer_secret"]), ("a.example", "s3cr3t"))
 
+    async def test_an_unreachable_peer_is_logged_on_one_line(self):
+        opener = FakeComponentsOpener({"a.example:9000": urllib.error.URLError("connection refused")})
+        directory = ComponentDirectory(
+            [ConfiguredPeers(peers="a=http://a.example:9000")], opener=opener, local_specifications=lambda: set()
+        )
+
+        with self.assertLogs("ycappuccino.remote.component_directory", "WARNING") as logs:
+            await directory._discover_all()
+
+        (record,) = logs.records
+        self.assertIsNone(record.exc_info)
+        self.assertIn("connection refused", record.getMessage())
+
     async def test_a_peer_declared_without_address_is_not_queried(self):
         opener = FakeComponentsOpener({})
         directory = ComponentDirectory(

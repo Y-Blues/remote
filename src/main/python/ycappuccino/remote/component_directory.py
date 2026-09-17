@@ -174,8 +174,9 @@ class ComponentDirectory(ITrigger):
                 document, CAPABILITIES_SERVICE_NAME, "GET", [], {}, None,
                 timeout=self._timeout, opener=self._opener,
             )
-        except Exception:
-            _logger.warning("could not query capabilities of remote server %r", peer_id, exc_info=True)
+        except Exception as error:
+            # a peer not started yet, or still starting, is expected: it is asked again at the next refresh
+            _logger.warning("could not query capabilities of remote server %r: %s", peer_id, error)
             return
         components = result.body.get("components", []) if isinstance(result.body, dict) else []
         for component in components:

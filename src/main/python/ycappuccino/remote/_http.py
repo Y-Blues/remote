@@ -83,9 +83,19 @@ def call_peer(
         response = opener(request, timeout=timeout)
     except urllib.error.HTTPError as error:
         with error:
-            return _translate(error.code, json.loads(error.read()), error.headers)
+            return _translate(error.code, _envelope(error.read()), error.headers)
     with response:
-        return _translate(response.status, json.loads(response.read()), response.headers)
+        return _translate(response.status, _envelope(response.read()), response.headers)
+
+
+def _envelope(content: bytes) -> dict:
+    """the peer's {"status","meta","data"} envelope; anything else (a peer whose API is not up yet answers
+    with its HTTP server's own page) carries no data, its status alone decides"""
+    try:
+        payload = json.loads(content)
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _local_peer_id() -> str:
