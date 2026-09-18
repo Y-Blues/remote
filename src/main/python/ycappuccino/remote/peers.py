@@ -25,5 +25,18 @@ class IPeers(YCappuccinoComponent, ABC):
         """the peer with this id, or None"""
 
 
+async def find_peer(sources: list, peer_id: str) -> dict | None:
+    """the peer with this id in the first source that knows it, or None"""
+    for source in list(sources):
+        peer = await source.get(peer_id)
+        if peer is not None:
+            return peer
+    return None
+
+
+async def all_peers(sources: list) -> list[dict]:
+    return [peer for source in list(sources) for peer in await source.all()]
+
+
 def has_address(peer: dict) -> bool:
     return all(peer.get(key) for key in ("scheme", "host", "port"))

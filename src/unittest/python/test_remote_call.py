@@ -5,6 +5,8 @@ import urllib.error
 
 from ycappuccino.api.endpoints_storage import Forbidden, InvalidRequest, NotAuthenticated, NotFound
 from ycappuccino.remote.call import RemoteCall
+from ycappuccino.remote.configured_peers import ConfiguredPeers
+from ycappuccino.remote.stored_peers import StoredPeers
 from ycappuccino.remote.models.remote_server import RemoteServer
 
 PEERS = {"peer-a": {"host": "peer.example", "port": 9000, "scheme": "http"}}
@@ -77,7 +79,7 @@ class TestRemoteCall(unittest.IsolatedAsyncioTestCase):
 
     async def test_forwards_a_call_to_the_peer(self):
         opener = FakeOpener(payload={"status": 200, "meta": {}, "data": {"echo": "hi"}})
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         result = await remote_call.call("POST", ["peer-a", "echo"], {}, {"msg": "hi"}, None)
 
@@ -89,7 +91,7 @@ class TestRemoteCall(unittest.IsolatedAsyncioTestCase):
 
     async def test_forwards_extra_path_and_query_params(self):
         opener = FakeOpener()
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         await remote_call.call("GET", ["peer-a", "items", "sub"], {"limit": "5"}, None, None)
 
@@ -99,55 +101,55 @@ class TestRemoteCall(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(request.data)
 
     async def test_unknown_peer_is_not_found(self):
-        remote_call = RemoteCall(FakeManager(PEERS), opener=FakeOpener())
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=FakeOpener())
 
         with self.assertRaises(NotFound):
             await remote_call.call("GET", ["unknown", "echo"], {}, None, None)
 
     async def test_missing_target_service_is_invalid(self):
-        remote_call = RemoteCall(FakeManager(PEERS), opener=FakeOpener())
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=FakeOpener())
 
         with self.assertRaises(InvalidRequest):
             await remote_call.call("GET", ["peer-a"], {}, None, None)
 
     async def test_peer_401_becomes_not_authenticated(self):
         opener = FakeOpener(status=401, payload={"status": 401, "meta": {}, "data": {"error": "no auth"}})
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         with self.assertRaises(NotAuthenticated):
             await remote_call.call("GET", ["peer-a", "secret"], {}, None, None)
 
     async def test_peer_403_becomes_forbidden(self):
         opener = FakeOpener(status=403, payload={"status": 403, "meta": {}, "data": {"error": "no"}})
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         with self.assertRaises(Forbidden):
             await remote_call.call("GET", ["peer-a", "secret"], {}, None, None)
 
     async def test_peer_404_becomes_not_found(self):
         opener = FakeOpener(status=404, payload={"status": 404, "meta": {}, "data": {"error": "no"}})
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         with self.assertRaises(NotFound):
             await remote_call.call("GET", ["peer-a", "missing"], {}, None, None)
 
     async def test_peer_400_becomes_invalid_request(self):
         opener = FakeOpener(status=400, payload={"status": 400, "meta": {}, "data": {"error": "bad"}})
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         with self.assertRaises(InvalidRequest):
             await remote_call.call("POST", ["peer-a", "echo"], {}, {}, None)
 
     async def test_peer_500_becomes_a_generic_error(self):
         opener = FakeOpener(status=500, payload={"status": 500, "meta": {}, "data": {"error": "boom"}})
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         with self.assertRaises(Exception):
             await remote_call.call("GET", ["peer-a", "echo"], {}, None, None)
 
     async def test_response_headers_are_forwarded_except_transport_ones(self):
         opener = FakeOpener(headers={"Set-Cookie": "a=b", "Content-Type": "application/json"})
-        remote_call = RemoteCall(FakeManager(PEERS), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager(PEERS))], opener=opener)
 
         result = await remote_call.call("GET", ["peer-a", "echo"], {}, None, None)
 
@@ -155,12 +157,20 @@ class TestRemoteCall(unittest.IsolatedAsyncioTestCase):
 
     async def test_the_caller_subject_is_forwarded_to_a_peer_with_a_secret(self):
         opener = FakeOpener()
-        remote_call = RemoteCall(FakeManager({"peer-a": {**PEERS["peer-a"], "secret": "s3cr3t"}}), opener=opener)
+        remote_call = RemoteCall([StoredPeers(FakeManager({"peer-a": {**PEERS["peer-a"], "secret": "s3cr3t"}}))], opener=opener)
 
         await remote_call.call("POST", ["peer-a", "echo"], {}, {}, {"sub": "alice", "tid": "acme"})
 
         headers = {key.lower(): value for key, value in opener.requests[0].header_items()}
         self.assertEqual(json.loads(headers["x-ycappuccino-subject"]), {"sub": "alice", "tid": "acme"})
+
+    async def test_a_configured_peer_is_called_without_any_storage(self):
+        opener = FakeOpener()
+        remote_call = RemoteCall([ConfiguredPeers(peers="peer-a=http://peer.example:9000")], opener=opener)
+
+        await remote_call.call("POST", ["peer-a", "echo"], {}, {"msg": "hi"}, None)
+
+        self.assertEqual(opener.requests[0].full_url, "http://peer.example:9000/api/services/echo")
 
     async def test_secure_flag_and_name(self):
         self.assertTrue(RemoteCall.secure)

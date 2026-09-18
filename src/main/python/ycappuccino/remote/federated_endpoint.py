@@ -32,10 +32,10 @@ from typing import Any, Callable
 
 from ycappuccino.api.endpoints_service import CALL, IExposedService, IServiceEndpoint, ServiceResult
 from ycappuccino.api.endpoints_storage import Forbidden, IAuthorization, NotAuthenticated, NotFound
-from ycappuccino.api.storage import IManager
 from ycappuccino.endpoints_service.endpoint import call_service
-from ycappuccino.remote._http import DEFAULT_TIMEOUT, REMOTE_SERVER_ITEM_ID, call_peer
+from ycappuccino.remote._http import DEFAULT_TIMEOUT, call_peer
 from ycappuccino.remote.discovery import ServiceDirectory
+from ycappuccino.remote.peers import IPeers, find_peer
 
 _logger = logging.getLogger(__name__)
 
@@ -47,14 +47,14 @@ class FederatedServiceEndpoint(IServiceEndpoint):
         services: list[IExposedService],
         authorizations: list[IAuthorization],
         directory: ServiceDirectory,
-        manager: IManager,
+        peers: list[IPeers],
         timeout: float = DEFAULT_TIMEOUT,
         opener: Callable | None = None,
     ) -> None:
         self._services = services
         self._authorizations = authorizations
         self._directory = directory
-        self._manager = manager
+        self._peers = peers
         self._timeout = timeout
         self._opener = opener
 
@@ -99,11 +99,10 @@ class FederatedServiceEndpoint(IServiceEndpoint):
         if peer_id is None:
             raise NotFound(f"unknown service {name}")
 
-        peer = await self._manager.get_one(REMOTE_SERVER_ITEM_ID, peer_id, subject=None)
-        if peer is None:
+        document = await find_peer(self._peers, peer_id)
+        if document is None:
             raise NotFound(f"unknown service {name}")
 
-        document = peer.get_storage_model()
         return call_peer(
             document, name, method, extra_path, params, body,
             timeout=self._timeout, opener=self._opener, subject=subject,

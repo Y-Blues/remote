@@ -29,18 +29,18 @@ the same service name on two peers queried by the same instance.
 import logging
 from typing import Callable, Optional
 
-from ycappuccino.api.storage import IManager
 from ycappuccino.api.core_base import YCappuccinoComponent
-from ycappuccino.remote._http import DEFAULT_TIMEOUT, REMOTE_SERVER_ITEM_ID, call_peer
+from ycappuccino.remote._http import DEFAULT_TIMEOUT, call_peer
 from ycappuccino.remote.capabilities import CAPABILITIES_SERVICE_NAME
+from ycappuccino.remote.peers import IPeers, all_peers, has_address
 
 _logger = logging.getLogger(__name__)
 
 
 class ServiceDirectory(YCappuccinoComponent):
 
-    def __init__(self, manager: IManager, timeout: float = DEFAULT_TIMEOUT, opener: Callable | None = None) -> None:
-        self._manager = manager
+    def __init__(self, peers: list[IPeers], timeout: float = DEFAULT_TIMEOUT, opener: Callable | None = None) -> None:
+        self._peers = peers
         self._timeout = timeout
         self._opener = opener
         self._cache: dict[str, str] = {}
@@ -58,9 +58,9 @@ class ServiceDirectory(YCappuccinoComponent):
         return self._cache.get(service_name)
 
     async def _discover_all(self) -> None:
-        peers = await self._manager.get_many(REMOTE_SERVER_ITEM_ID, subject=None)
-        for peer in peers:
-            self._discover_peer(peer.get_storage_model())
+        for peer in await all_peers(self._peers):
+            if has_address(peer):
+                self._discover_peer(peer)
 
     def _discover_peer(self, document: dict) -> None:
         peer_id = document.get("_id")

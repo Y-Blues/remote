@@ -6,6 +6,7 @@ import json
 import unittest
 
 from ycappuccino.remote.call import RemoteCall
+from ycappuccino.remote.stored_peers import StoredPeers
 from ycappuccino.remote.models.remote_server import RemoteServer
 
 
@@ -58,7 +59,7 @@ class FakeOpener:
 class TestRemoteCall(unittest.IsolatedAsyncioTestCase):
     async def test_forwards_to_the_peer(self):
         manager = FakeManager({"peer-a": {"host": "peer.example", "port": 9000, "scheme": "http"}})
-        remote_call = RemoteCall(manager, opener=FakeOpener({"status": 200, "meta": {}, "data": {"ok": True}}))
+        remote_call = RemoteCall([StoredPeers(manager)], opener=FakeOpener({"status": 200, "meta": {}, "data": {"ok": True}}))
 
         result = await remote_call.call("GET", ["peer-a", "echo"], {}, None, None)
 

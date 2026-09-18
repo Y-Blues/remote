@@ -13,7 +13,9 @@ from remote_fixtures import ALICE, FakeAuthorization, FakeExposedService
 
 from ycappuccino.api.endpoints_service import CALL
 from ycappuccino.api.endpoints_storage import Forbidden, NotAuthenticated, NotFound
+from ycappuccino.remote.configured_peers import ConfiguredPeers
 from ycappuccino.remote.federated_endpoint import FederatedServiceEndpoint
+from ycappuccino.remote.stored_peers import StoredPeers
 
 
 class FakeDirectory:
@@ -42,7 +44,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
 
     async def test_calls_a_local_unsecured_service_without_a_subject(self):
         echo = FakeExposedService("echo", secure=False)
-        endpoint = FederatedServiceEndpoint([echo], [], FakeDirectory(), FakeManager())
+        endpoint = FederatedServiceEndpoint([echo], [], FakeDirectory(), [StoredPeers(FakeManager())])
 
         result = await endpoint.call("echo", "POST", ["extra"], {"q": "1"}, {"msg": "hi"}, None)
 
@@ -67,7 +69,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
             async def greet(self, language: str, who: str) -> dict:
                 return {"language": language, "who": who}
 
-        endpoint = FederatedServiceEndpoint([Greeting()], [], FakeDirectory(), FakeManager())
+        endpoint = FederatedServiceEndpoint([Greeting()], [], FakeDirectory(), [StoredPeers(FakeManager())])
 
         result = await endpoint.call("greeting", "POST", ["fr"], {}, {"who": "Alice"}, None)
 
@@ -75,7 +77,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
 
     async def test_local_secured_service_requires_a_subject(self):
         secret = FakeExposedService("secret")
-        endpoint = FederatedServiceEndpoint([secret], [FakeAuthorization()], FakeDirectory(), FakeManager())
+        endpoint = FederatedServiceEndpoint([secret], [FakeAuthorization()], FakeDirectory(), [StoredPeers(FakeManager())])
 
         with self.assertRaises(NotAuthenticated):
             await endpoint.call("secret", "POST", [], {}, {}, None)
@@ -83,7 +85,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
 
     async def test_local_secured_service_without_authorization_is_forbidden(self):
         secret = FakeExposedService("secret")
-        endpoint = FederatedServiceEndpoint([secret], [], FakeDirectory(), FakeManager())
+        endpoint = FederatedServiceEndpoint([secret], [], FakeDirectory(), [StoredPeers(FakeManager())])
 
         with self.assertLogs("ycappuccino.remote.federated_endpoint", "WARNING"):
             with self.assertRaises(Forbidden):
@@ -92,7 +94,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
     async def test_local_secured_service_asks_the_authorization(self):
         secret = FakeExposedService("secret")
         authorization = FakeAuthorization(allowed=())
-        endpoint = FederatedServiceEndpoint([secret], [authorization], FakeDirectory(), FakeManager())
+        endpoint = FederatedServiceEndpoint([secret], [authorization], FakeDirectory(), [StoredPeers(FakeManager())])
 
         with self.assertRaises(Forbidden):
             await endpoint.call("secret", "POST", [], {}, {}, ALICE)
@@ -105,7 +107,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
     async def test_local_service_takes_priority_over_a_directory_entry(self):
         echo = FakeExposedService("echo", secure=False)
         directory = FakeDirectory({"echo": "peer-a"})
-        endpoint = FederatedServiceEndpoint([echo], [], directory, FakeManager())
+        endpoint = FederatedServiceEndpoint([echo], [], directory, [StoredPeers(FakeManager())])
 
         await endpoint.call("echo", "POST", [], {}, {}, None)
 
@@ -117,7 +119,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
         manager = FakeManager({"peer-a": {"host": "peer.example", "port": 9000, "scheme": "http"}})
         directory = FakeDirectory({"remote_echo": "peer-a"})
         opener = FakeOpener({"status": 200, "meta": {}, "data": {"echo": "hi"}})
-        endpoint = FederatedServiceEndpoint([], [], directory, manager, opener=opener)
+        endpoint = FederatedServiceEndpoint([], [], directory, [StoredPeers(manager)], opener=opener)
 
         result = await endpoint.call("remote_echo", "POST", [], {}, {"msg": "hi"}, None)
 
@@ -130,7 +132,7 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
     async def test_forwarding_to_a_peer_carries_the_caller_subject(self):
         manager = FakeManager({"peer-a": {"host": "peer.example", "port": 9000, "scheme": "http", "secret": "s3cr3t"}})
         opener = FakeOpener({"status": 200, "meta": {}, "data": {}})
-        endpoint = FederatedServiceEndpoint([], [], FakeDirectory({"remote_echo": "peer-a"}), manager, opener=opener)
+        endpoint = FederatedServiceEndpoint([], [], FakeDirectory({"remote_echo": "peer-a"}), [StoredPeers(manager)], opener=opener)
 
         await endpoint.call("remote_echo", "POST", [], {}, {}, {"sub": "alice", "tid": "acme"})
 
@@ -138,17 +140,31 @@ class TestFederatedServiceEndpoint(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(headers["x-ycappuccino-subject"]), {"sub": "alice", "tid": "acme"})
 
     async def test_missing_everywhere_is_not_found(self):
-        endpoint = FederatedServiceEndpoint([], [], FakeDirectory(), FakeManager())
+        endpoint = FederatedServiceEndpoint([], [], FakeDirectory(), [StoredPeers(FakeManager())])
 
         with self.assertRaises(NotFound):
             await endpoint.call("nowhere", "GET", [], {}, None, None)
 
     async def test_directory_points_to_a_peer_no_longer_registered_is_not_found(self):
         directory = FakeDirectory({"ghost": "gone"})
-        endpoint = FederatedServiceEndpoint([], [], directory, FakeManager())
+        endpoint = FederatedServiceEndpoint([], [], directory, [StoredPeers(FakeManager())])
 
         with self.assertRaises(NotFound):
             await endpoint.call("ghost", "GET", [], {}, None, None)
+
+
+    async def test_a_configured_peer_is_forwarded_to_without_any_storage(self):
+        opener = FakeOpener()
+        endpoint = FederatedServiceEndpoint(
+            [], [], FakeDirectory({"change_password": "usecases"}),
+            [ConfiguredPeers(peers="usecases=http://b.example:9001", secret="s3cr3t")], opener=opener,
+        )
+
+        await endpoint.call("change_password", "POST", [], {}, {"login": "bob"}, {"sub": "bob", "tid": "acme"})
+
+        request = opener.requests[0]
+        self.assertEqual(request.full_url, "http://b.example:9001/api/services/change_password")
+        self.assertIsNotNone(request.get_header("X-ycappuccino-signature"))
 
 
 if __name__ == "__main__":

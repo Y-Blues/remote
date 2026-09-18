@@ -20,8 +20,9 @@ from ycappuccino.api.core_base import YCappuccinoComponent
 from ycappuccino.api.endpoints_storage import NotFound
 from ycappuccino.api.storage import IManager
 from ycappuccino.core.framework import Framework
-from ycappuccino.remote._http import DEFAULT_TIMEOUT, REMOTE_SERVER_ITEM_ID, call_peer
+from ycappuccino.remote._http import DEFAULT_TIMEOUT, call_peer
 from ycappuccino.remote.capabilities import CAPABILITIES_SERVICE_NAME, describe_components
+from ycappuccino.remote.peers import IPeers, all_peers, find_peer, has_address
 from ycappuccino.remote.models.service_descriptor import (
     SERVICE_DESCRIPTOR_ITEM_ID,
     ServiceDescriptor,
@@ -42,12 +43,14 @@ class ServiceCatalog(YCappuccinoComponent):
     def __init__(
         self,
         manager: IManager,
+        peers: list[IPeers],
         timeout: float = DEFAULT_TIMEOUT,
         opener: Callable | None = None,
         local_descriptors: Callable | None = None,
     ) -> None:
         # opener/local_descriptors default to real HTTP and the running Framework; a unit test fakes both
         self._manager = manager
+        self._peers = peers
         self._timeout = timeout
         self._opener = opener
         self._local_descriptors = local_descriptors if local_descriptors is not None else _default_local_descriptors
@@ -66,18 +69,19 @@ class ServiceCatalog(YCappuccinoComponent):
         pass
 
     async def refresh_all(self) -> None:
-        for peer in await self._manager.get_many(REMOTE_SERVER_ITEM_ID, {"limit": _ALL}, subject=None):
-            document = peer.get_storage_model()
+        for document in await all_peers(self._peers):
+            if not has_address(document):
+                continue
             try:
                 await self._refresh(document)
             except Exception:
                 _logger.warning("could not refresh the descriptors of remote server %r", document.get("_id"), exc_info=True)
 
     async def refresh_peer(self, peer_id: str) -> list[str]:
-        peer = await self._manager.get_one(REMOTE_SERVER_ITEM_ID, peer_id, subject=None)
-        if peer is None:
+        document = await find_peer(self._peers, peer_id)
+        if document is None:
             raise NotFound(f"unknown remote server {peer_id}")
-        return await self._refresh(peer.get_storage_model())
+        return await self._refresh(document)
 
     async def _refresh(self, document: dict) -> list[str]:
         peer_id = document["_id"]
@@ -108,10 +112,9 @@ class ServiceCatalog(YCappuccinoComponent):
         )
         for descriptor in descriptors:
             stored = descriptor.get_storage_model()
-            peer = await self._manager.get_one(REMOTE_SERVER_ITEM_ID, stored["peer_id"], subject=None)
-            if peer is None:
+            server = await find_peer(self._peers, stored["peer_id"])
+            if server is None:
                 continue
-            server = peer.get_storage_model()
             located.append({
                 "peer_id": stored["peer_id"],
                 "host": server["host"],

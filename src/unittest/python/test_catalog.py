@@ -12,6 +12,7 @@ from remote_fixtures import create_manager
 
 from ycappuccino.api.endpoints_storage import NotFound
 from ycappuccino.remote.catalog import ServiceCatalog
+from ycappuccino.remote.stored_peers import StoredPeers
 from ycappuccino.remote.models.remote_server import RemoteServer
 
 LOGIN = "ycappuccino.api.permissions.ILoginService"
@@ -55,7 +56,7 @@ class TestServiceCatalog(unittest.IsolatedAsyncioTestCase):
             ],
         })
         self.local = []
-        self.catalog = ServiceCatalog(self.manager, opener=self.opener, local_descriptors=lambda: self.local)
+        self.catalog = ServiceCatalog(self.manager, [StoredPeers(self.manager)], opener=self.opener, local_descriptors=lambda: self.local)
 
     async def _add_peer(self, peer_id, host, port):
         server = RemoteServer()

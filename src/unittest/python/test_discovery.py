@@ -9,7 +9,9 @@ import urllib.error
 
 from discovery_fixtures import FakeCapabilitiesOpener, FakeManager
 
+from ycappuccino.remote.configured_peers import ConfiguredPeers
 from ycappuccino.remote.discovery import ServiceDirectory
+from ycappuccino.remote.stored_peers import StoredPeers
 
 
 class TestServiceDirectory(unittest.IsolatedAsyncioTestCase):
@@ -17,7 +19,7 @@ class TestServiceDirectory(unittest.IsolatedAsyncioTestCase):
     async def test_start_eagerly_discovers_every_registered_peer(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
         opener = FakeCapabilitiesOpener({"a.example:9000": ["service_a", "shared_service"]})
-        directory = ServiceDirectory(manager, opener=opener)
+        directory = ServiceDirectory([StoredPeers(manager)], opener=opener)
 
         await directory.start()
 
@@ -35,7 +37,7 @@ class TestServiceDirectory(unittest.IsolatedAsyncioTestCase):
             "down.example:9000": urllib.error.URLError("connection refused"),
             "up.example:9000": ["service_up"],
         })
-        directory = ServiceDirectory(manager, opener=opener)
+        directory = ServiceDirectory([StoredPeers(manager)], opener=opener)
 
         with self.assertLogs("ycappuccino.remote.discovery", "WARNING"):
             await directory.start()  # must not raise
@@ -46,7 +48,7 @@ class TestServiceDirectory(unittest.IsolatedAsyncioTestCase):
     async def test_cache_hit_does_not_requery_peers(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
         opener = FakeCapabilitiesOpener({"a.example:9000": ["service_a"]})
-        directory = ServiceDirectory(manager, opener=opener)
+        directory = ServiceDirectory([StoredPeers(manager)], opener=opener)
         await directory.start()
         opener.requests.clear()
 
@@ -58,7 +60,7 @@ class TestServiceDirectory(unittest.IsolatedAsyncioTestCase):
     async def test_cache_miss_triggers_a_live_requery(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
         opener = FakeCapabilitiesOpener({"a.example:9000": []})
-        directory = ServiceDirectory(manager, opener=opener)
+        directory = ServiceDirectory([StoredPeers(manager)], opener=opener)
         await directory.start()
 
         # a peer registered after start() -- discovery has never run for it
@@ -74,12 +76,20 @@ class TestServiceDirectory(unittest.IsolatedAsyncioTestCase):
     async def test_service_absent_everywhere_returns_none(self):
         manager = FakeManager({"a": {"host": "a.example", "port": 9000, "scheme": "http"}})
         opener = FakeCapabilitiesOpener({"a.example:9000": ["service_a"]})
-        directory = ServiceDirectory(manager, opener=opener)
+        directory = ServiceDirectory([StoredPeers(manager)], opener=opener)
         await directory.start()
 
         located = await directory.locate("nonexistent")
 
         self.assertIsNone(located)
+
+
+    async def test_configured_peers_are_asked_without_any_storage(self):
+        opener = FakeCapabilitiesOpener({"b.example:9001": ["change_password"]})
+        directory = ServiceDirectory([ConfiguredPeers(peers="usecases=http://b.example:9001, frontend")], opener=opener)
+
+        self.assertEqual(await directory.locate("change_password"), "usecases")
+        self.assertEqual(len(opener.requests), 1)
 
 
 if __name__ == "__main__":
