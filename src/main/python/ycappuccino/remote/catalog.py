@@ -74,8 +74,8 @@ class ServiceCatalog(YCappuccinoComponent):
                 continue
             try:
                 await self._refresh(document)
-            except Exception:
-                _logger.warning("could not refresh the descriptors of remote server %r", document.get("_id"), exc_info=True)
+            except Exception as error:
+                _logger.warning("could not refresh the descriptors of remote server %r: %s", document.get("_id"), error)
 
     async def refresh_peer(self, peer_id: str) -> list[str]:
         document = await find_peer(self._peers, peer_id)

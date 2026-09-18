@@ -71,8 +71,9 @@ class TestCallPeerErrors(unittest.TestCase):
     def test_a_non_json_error_keeps_its_status(self):
         from ycappuccino.api.endpoints_storage import NotFound
 
-        with self.assertRaises(NotFound):
+        with self.assertRaises(NotFound) as raised:
             call_peer(PEER, "echo", "GET", [], None, None, opener=NotJsonOpener(404))
+        self.assertIn("404", str(raised.exception))
         with self.assertRaises(RuntimeError):
             call_peer(PEER, "echo", "GET", [], None, None, opener=NotJsonOpener(503))
 

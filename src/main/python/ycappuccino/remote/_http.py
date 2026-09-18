@@ -106,7 +106,8 @@ def _local_peer_id() -> str:
 
 def _translate(status: int, payload: dict, headers: Any) -> ServiceResult:
     data = payload.get("data")
-    message = data.get("error", "remote call failed") if isinstance(data, dict) else "remote call failed"
+    fallback = f"remote call failed with HTTP {status}"
+    message = data.get("error", fallback) if isinstance(data, dict) else fallback
     if status == 401:
         raise NotAuthenticated(message)
     if status == 403:

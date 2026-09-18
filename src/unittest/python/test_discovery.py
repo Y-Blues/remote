@@ -92,5 +92,16 @@ class TestServiceDirectory(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(opener.requests), 1)
 
 
+    async def test_a_peer_not_ready_yet_is_logged_on_one_line(self):
+        opener = FakeCapabilitiesOpener({"b.example:9001": urllib.error.URLError("connection refused")})
+        directory = ServiceDirectory([ConfiguredPeers(peers="usecases=http://b.example:9001")], opener=opener)
+
+        with self.assertLogs("ycappuccino.remote.discovery", "WARNING") as logs:
+            self.assertIsNone(await directory.locate("change_password"))
+
+        self.assertTrue(all(record.exc_info is None for record in logs.records))
+        self.assertIn("connection refused", logs.records[0].getMessage())
+
+
 if __name__ == "__main__":
     unittest.main()

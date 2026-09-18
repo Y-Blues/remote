@@ -92,8 +92,9 @@ class TestServiceCatalog(unittest.IsolatedAsyncioTestCase):
         await self.catalog.refresh_all()
         self.opener.descriptors_by_address["node-a:9001"] = urllib.error.URLError("down")
 
-        with self.assertLogs("ycappuccino.remote.catalog", "WARNING"):
+        with self.assertLogs("ycappuccino.remote.catalog", "WARNING") as logs:
             await self.catalog.refresh_all()
+        self.assertTrue(all(record.exc_info is None for record in logs.records))
 
         self.assertEqual(sorted(entry["peer_id"] for entry in await self.catalog.locate(LOGIN)), ["peer-a", "peer-b"])
 
