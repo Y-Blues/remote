@@ -166,6 +166,17 @@ class TestRemoteDispatch(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.body, {"result": ALICE})
 
+    async def test_a_peer_calling_for_a_user_passes_that_user_not_the_peer(self):
+        result = await self.call("whoami", {}, {**ALICE, "peer": "backend-1"})
+
+        self.assertEqual(result.body, {"result": ALICE})
+
+    async def test_a_peer_calling_for_nobody_passes_no_subject(self):
+        # the peer key opens the internal methods; it is never taken for a signed-in user
+        result = await self.call("whoami", {}, PEER)
+
+        self.assertEqual(result.body, {"result": None})
+
     async def test_does_not_forward_subject_to_a_method_without_that_parameter(self):
         result = await self.call("check_stock", {"kwargs": {"sku": "widget"}}, PEER)
 

@@ -26,8 +26,9 @@ authenticated for the request:
   IAuthorization, to "call" "<qualified path>.<method name>"; an unsecured one checks its caller
   itself (Crud through Access, ServiceEndpoint through each service's own secure flag, login).
 
-The target method receives that authenticated subject as its `subject` parameter when it declares
-one; a subject put in the payload is ignored. The service itself stays secure=False: an anonymous
+The target method receives the user the call is made for as its `subject` parameter when it declares
+one: the authenticated subject without its "peer" key, None when a peer calls for nobody. A subject put in
+the payload is ignored. The service itself stays secure=False: an anonymous
 browser must be able to reach a public method such as login.
 """
 
@@ -74,6 +75,15 @@ def _accepts_subject(target: Callable) -> bool:
         return "subject" in inspect.signature(target).parameters
     except (TypeError, ValueError):
         return False
+
+
+def user_of(subject: dict | None) -> dict | None:
+    """the user a call is made for: the authenticated subject without its peer key, None when a peer calls for
+    nobody -- the peer key only opens the internal methods, it is never taken for a signed-in user"""
+    if subject is None:
+        return None
+    user = {key: value for key, value in subject.items() if key != "peer"}
+    return user or None
 
 
 def is_peer(subject: dict | None) -> bool:
@@ -164,7 +174,7 @@ class RemoteDispatch(IExposedService):
         kwargs = dict(payload.get("kwargs") or {})
         kwargs.pop("subject", None)
         if _accepts_subject(target):
-            kwargs["subject"] = subject
+            kwargs["subject"] = user_of(subject)
         result = target(*args, **kwargs)
         if inspect.isawaitable(result):
             result = await result

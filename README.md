@@ -310,8 +310,10 @@ Une méthode `@rpc_method` sécurisée (par défaut) exige un sujet autorisé pa
 `IAuthorization` à l'action `call` sur `<chemin qualifié>.<méthode>` (une `RolePermission`
 `call:ycappuccino.api.permissions.ILoginService.*`, par exemple) ; `@rpc_method(secure=False)` laisse la
 méthode contrôler elle-même (`Crud` via `Access`, `ServiceEndpoint` via le `secure` de chaque service,
-`ILoginService.login`). La méthode cible reçoit le sujet authentifié dans son paramètre `subject` si elle
-en déclare un ; un `subject` dans la charge utile est ignoré.
+`ILoginService.login`). La méthode cible reçoit dans son paramètre `subject`, si elle en déclare un, l'utilisateur pour qui l'appel est
+fait : le sujet authentifié sans sa clé `peer`, `None` quand un pair appelle pour personne (la clé `peer`
+ouvre les méthodes internes, elle n'est jamais prise pour un utilisateur connecté). Un `subject` dans la
+charge utile est ignoré.
 
 `__remote_capabilities__` suit la même règle : un pair voit tous les composants, les autres seulement les
 interfaces qui ont au moins une méthode `@rpc_method`.
